@@ -14,20 +14,31 @@ export class MailService {
   private initTransporter() {
     const host = this.config.get<string>('SMTP_HOST') || 'smtp.gmail.com';
     const port = parseInt(this.config.get<string>('SMTP_PORT') || '587', 10);
-    const user = this.config.get<string>('SMTP_USER');
-    const pass = this.config.get<string>('SMTP_PASS');
+    const user = this.config.get<string>('SMTP_USER')?.trim();
+    const rawPass = this.config.get<string>('SMTP_PASS')?.trim();
+    const pass = rawPass ? rawPass.replace(/\s+/g, '') : undefined;
 
     if (user && pass) {
-      this.transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465, // true for 465, false for 587
-        auth: {
-          user,
-          pass,
-        },
-      });
-      this.logger.log(`📧 SMTP mailer initialized with host: ${host}:${port} (${user})`);
+      if (host.includes('gmail.com')) {
+        this.transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user,
+            pass,
+          },
+        });
+      } else {
+        this.transporter = nodemailer.createTransport({
+          host,
+          port,
+          secure: port === 465,
+          auth: {
+            user,
+            pass,
+          },
+        });
+      }
+      this.logger.log(`📧 SMTP mailer initialized successfully for: ${user}`);
     } else {
       this.logger.warn(
         '⚠️ SMTP_USER hoặc SMTP_PASS chưa được cấu hình trong .env. Mã OTP sẽ được in ra console trong lúc phát triển.',
@@ -40,10 +51,10 @@ export class MailService {
   }
 
   async sendOtpEmail(toEmail: string, otp: string, fullName: string): Promise<boolean> {
-    const from =
-      this.config.get<string>('SMTP_FROM') ||
-      this.config.get<string>('SMTP_USER') ||
-      '"Test Management Platform" <noreply@testplatform.dev>';
+    const user = this.config.get<string>('SMTP_USER')?.trim();
+    const from = user
+      ? `"Test Management Platform" <${user}>`
+      : '"Test Management Platform" <noreply@testplatform.dev>';
 
     // Fallback log for development & debugging
     this.logger.log(`\n======================================================\n` +
