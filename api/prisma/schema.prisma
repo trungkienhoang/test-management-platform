@@ -31,6 +31,19 @@ enum ProjectStatus {
   ARCHIVED
 }
 
+enum TestCasePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TestCaseStatus {
+  DRAFT
+  READY
+  DEPRECATED
+}
+
 // ─────────────────────────────────────────
 // USERS & AUTH
 // ─────────────────────────────────────────
@@ -46,9 +59,11 @@ model User {
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
-  refreshTokens   RefreshToken[]
-  projectMembers  ProjectMember[]
-  createdProjects Project[]
+  refreshTokens     RefreshToken[]
+  projectMembers    ProjectMember[]
+  createdProjects   Project[]
+  createdTestCases  TestCase[]
+  testCaseHistories TestCaseHistory[]
 
   @@map("users")
 }
@@ -80,8 +95,10 @@ model Project {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  createdBy User            @relation(fields: [createdById], references: [id])
-  members   ProjectMember[]
+  createdBy  User            @relation(fields: [createdById], references: [id])
+  members    ProjectMember[]
+  testSuites TestSuite[]
+  testCases  TestCase[]
 
   @@map("projects")
 }
@@ -134,4 +151,91 @@ model PasswordReset {
   @@index([email])
   @@map("password_resets")
 }
+
+// ─────────────────────────────────────────
+// TEST SUITES (SPRINT 2)
+// ─────────────────────────────────────────
+
+model TestSuite {
+  id          String   @id @default(cuid())
+  projectId   String   @map("project_id")
+  name        String
+  description String?
+  parentId    String?  @map("parent_id")
+  order       Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent    TestSuite?  @relation("SuiteHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  TestSuite[] @relation("SuiteHierarchy")
+  testCases TestCase[]
+
+  @@index([projectId])
+  @@index([parentId])
+  @@map("test_suites")
+}
+
+// ─────────────────────────────────────────
+// TEST CASES (SPRINT 2)
+// ─────────────────────────────────────────
+
+model TestCase {
+  id            String           @id @default(cuid())
+  projectId     String           @map("project_id")
+  suiteId       String?          @map("suite_id")
+  code          String           // Ví dụ: TC-1, TC-2...
+  title         String
+  description   String?
+  preconditions String?
+  steps         Json             @default("[]") // [{stepNumber: 1, action: "...", expectedResult: "..."}]
+  priority      TestCasePriority @default(MEDIUM)
+  status        TestCaseStatus   @default(DRAFT)
+  tags          String[]         @default([])
+  order         Int              @default(0)
+  version       Int              @default(1)
+  createdById   String           @map("created_by_id")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  suite     TestSuite?        @relation(fields: [suiteId], references: [id], onDelete: SetNull)
+  createdBy User              @relation(fields: [createdById], references: [id])
+  histories TestCaseHistory[]
+
+  @@unique([projectId, code])
+  @@index([projectId])
+  @@index([suiteId])
+  @@index([priority])
+  @@index([status])
+  @@map("test_cases")
+}
+
+// ─────────────────────────────────────────
+// TEST CASE HISTORIES / VERSIONING (SPRINT 2)
+// ─────────────────────────────────────────
+
+model TestCaseHistory {
+  id            String           @id @default(cuid())
+  testCaseId    String           @map("test_case_id")
+  version       Int
+  title         String
+  description   String?
+  preconditions String?
+  steps         Json             @default("[]")
+  priority      TestCasePriority
+  status        TestCaseStatus
+  tags          String[]         @default([])
+  changedById   String           @map("changed_by_id")
+  changeReason  String?          @map("change_reason")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  testCase  TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  changedBy User     @relation(fields: [changedById], references: [id])
+
+  @@unique([testCaseId, version])
+  @@index([testCaseId])
+  @@map("test_case_histories")
+}
+
 

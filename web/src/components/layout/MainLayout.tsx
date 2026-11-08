@@ -13,7 +13,7 @@ export const MainLayout: React.FC = () => {
 
   const projectNavItems = [
     { name: 'Dự án (Projects)', path: '/projects', icon: '📁' },
-    { name: 'Test Suites', path: '/test-suites', icon: '📑', badge: 'Sprint 2' },
+    { name: 'Kho Test Suites & Cases', path: '/test-suites', icon: '📑' },
     { name: 'Test Runs', path: '/test-runs', icon: '▶️', badge: 'Sprint 3' },
     { name: 'Quản lý Bug', path: '/bugs', icon: '🐛', badge: 'Sprint 3' },
     { name: 'Dashboard', path: '/dashboard', icon: '📊', badge: 'Sprint 4' },
@@ -29,7 +29,7 @@ export const MainLayout: React.FC = () => {
             <span className="text-2xl">🧪</span>
             <div>
               <h1 className="font-bold text-sm tracking-wide text-white">Test Platform</h1>
-              <p className="text-xs text-indigo-400">v1.0 · Sprint 1</p>
+              <p className="text-xs text-emerald-400">v1.2 · Sprint 2</p>
             </div>
           </div>
 

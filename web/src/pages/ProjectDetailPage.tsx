@@ -3,7 +3,16 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import type { Project, ProjectMember, ProjectRole, ProjectStatus, User } from '../types';
+import type {
+  Project,
+  ProjectMember,
+  ProjectRole,
+  ProjectStatus,
+  User,
+  TestSuiteTreeNode,
+  PaginatedResponse,
+  TestCase,
+} from '../types';
 
 export const ProjectDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +55,34 @@ export const ProjectDetailPage: React.FC = () => {
     },
     enabled: !!id,
   });
+
+  // Fetch Test Suites count
+  const { data: suites = [] } = useQuery<TestSuiteTreeNode[]>({
+    queryKey: ['test-suites', id],
+    queryFn: async () => {
+      const res = await apiClient.get<TestSuiteTreeNode[]>(`/projects/${id}/suites`);
+      return res.data;
+    },
+    enabled: !!id,
+  });
+
+  // Fetch Test Cases count
+  const { data: casesData } = useQuery<PaginatedResponse<TestCase>>({
+    queryKey: ['test-cases-count', id],
+    queryFn: async () => {
+      const res = await apiClient.get<PaginatedResponse<TestCase>>(`/projects/${id}/test-cases`, {
+        params: { limit: 1 },
+      });
+      return res.data;
+    },
+    enabled: !!id,
+  });
+
+  // Helper to count suites recursively
+  const countSuitesRecursive = (nodes: TestSuiteTreeNode[]): number => {
+    return nodes.reduce((acc, node) => acc + 1 + (node.children ? countSuitesRecursive(node.children) : 0), 0);
+  };
+  const totalSuitesCount = countSuitesRecursive(suites);
 
   // Permissions check
   const currentUserMember = members?.find((m) => m.userId === user?.id);
@@ -205,6 +242,13 @@ export const ProjectDetailPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <Link
+              to={`/projects/${id}/repository`}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5"
+            >
+              <span>📑</span> Kho Test Cases
+            </Link>
+
             {canManageProject && (
               <button
                 onClick={handleOpenSettings}
@@ -222,10 +266,10 @@ export const ProjectDetailPage: React.FC = () => {
                 setModalError(null);
               }}
               disabled={isArchived}
-              className={`text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5 ${
+              className={`bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold px-3 py-2 rounded-lg shadow-2xs transition flex items-center gap-1.5 ${
                 isArchived
-                  ? 'bg-slate-400 cursor-not-allowed'
-                  : 'bg-indigo-600 hover:bg-indigo-700'
+                  ? 'opacity-50 cursor-not-allowed'
+                  : ''
               }`}
               title={isArchived ? 'Không thể thêm thành viên vào dự án đã lưu trữ' : 'Thêm thành viên'}
             >
@@ -263,25 +307,47 @@ export const ProjectDetailPage: React.FC = () => {
 
       {/* Sprint Roadmap Tabs for this Project */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200">
-          <div className="text-xs text-slate-400 uppercase font-semibold">Test Suites</div>
+        <Link
+          to={`/projects/${id}/repository`}
+          className="bg-white p-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-xs transition group block"
+        >
+          <div className="text-xs text-slate-400 group-hover:text-indigo-600 uppercase font-semibold flex items-center justify-between">
+            <span>Test Suites</span>
+            <span className="text-sm">📁</span>
+          </div>
+          <div className="text-2xl font-bold text-slate-800 mt-1">{totalSuitesCount}</div>
+          <div className="text-[11px] text-indigo-600 mt-1 font-medium flex items-center gap-1">
+            Xem cây thư mục →
+          </div>
+        </Link>
+        <Link
+          to={`/projects/${id}/repository`}
+          className="bg-white p-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-xs transition group block"
+        >
+          <div className="text-xs text-slate-400 group-hover:text-indigo-600 uppercase font-semibold flex items-center justify-between">
+            <span>Test Cases</span>
+            <span className="text-sm">🧪</span>
+          </div>
+          <div className="text-2xl font-bold text-slate-800 mt-1">{casesData?.pagination?.total ?? 0}</div>
+          <div className="text-[11px] text-indigo-600 mt-1 font-medium flex items-center gap-1">
+            Xem danh sách & soạn thảo →
+          </div>
+        </Link>
+        <div className="bg-white p-4 rounded-xl border border-slate-200 opacity-75">
+          <div className="text-xs text-slate-400 uppercase font-semibold flex items-center justify-between">
+            <span>Test Runs</span>
+            <span className="text-sm">▶️</span>
+          </div>
           <div className="text-2xl font-bold text-slate-800 mt-1">0</div>
-          <div className="text-[11px] text-indigo-600 mt-1">Sprint 2</div>
+          <div className="text-[11px] text-slate-400 mt-1">Sắp ra mắt (Sprint 3)</div>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200">
-          <div className="text-xs text-slate-400 uppercase font-semibold">Test Cases</div>
+        <div className="bg-white p-4 rounded-xl border border-slate-200 opacity-75">
+          <div className="text-xs text-slate-400 uppercase font-semibold flex items-center justify-between">
+            <span>Bugs ghi nhận</span>
+            <span className="text-sm">🐞</span>
+          </div>
           <div className="text-2xl font-bold text-slate-800 mt-1">0</div>
-          <div className="text-[11px] text-indigo-600 mt-1">Sprint 2</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200">
-          <div className="text-xs text-slate-400 uppercase font-semibold">Test Runs</div>
-          <div className="text-2xl font-bold text-slate-800 mt-1">0</div>
-          <div className="text-[11px] text-indigo-600 mt-1">Sprint 3</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200">
-          <div className="text-xs text-slate-400 uppercase font-semibold">Bugs ghi nhận</div>
-          <div className="text-2xl font-bold text-slate-800 mt-1">0</div>
-          <div className="text-[11px] text-indigo-600 mt-1">Sprint 3</div>
+          <div className="text-[11px] text-slate-400 mt-1">Sắp ra mắt (Sprint 3)</div>
         </div>
       </div>
 

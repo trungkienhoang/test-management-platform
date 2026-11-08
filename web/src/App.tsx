@@ -8,6 +8,7 @@ import { ProjectsPage } from './pages/ProjectsPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { UsersManagementPage } from './pages/UsersManagementPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { TestRepositoryPage } from './pages/TestRepositoryPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -70,6 +71,8 @@ export const App: React.FC = () => {
               <Route index element={<Navigate to="/projects" replace />} />
               <Route path="projects" element={<ProjectsPage />} />
               <Route path="projects/:id" element={<ProjectDetailPage />} />
+              <Route path="projects/:id/repository" element={<TestRepositoryPage />} />
+              <Route path="test-suites" element={<TestRepositoryPage />} />
               <Route path="profile" element={<ProfilePage />} />
 
               {/* Admin-only system user management */}
@@ -79,18 +82,6 @@ export const App: React.FC = () => {
                   <AdminRoute>
                     <UsersManagementPage />
                   </AdminRoute>
-                }
-              />
-
-              {/* Placeholder routes for upcoming sprints */}
-              <Route
-                path="test-suites"
-                element={
-                  <div className="bg-white p-8 rounded-xl border border-slate-200 text-center">
-                    <span className="text-3xl">📑</span>
-                    <h3 className="font-bold text-slate-800 mt-2">Quản lý Test Suites (Sprint 2)</h3>
-                    <p className="text-xs text-slate-500 mt-1">Sẽ được phát triển trong Sprint 2: 21/12 - 03/01</p>
-                  </div>
                 }
               />
               <Route

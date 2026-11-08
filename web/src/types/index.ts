@@ -51,12 +51,106 @@ export interface Project {
   };
 }
 
+export interface PaginationMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
+  pagination?: PaginationMeta;
+  meta?: PaginationMeta;
+}
+
+// ─────────────────────────────────────────
+// SPRINT 2: TEST SUITES & TEST CASES
+// ─────────────────────────────────────────
+
+export type TestCasePriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type TestCaseStatus = 'DRAFT' | 'READY' | 'DEPRECATED';
+
+export interface TestCaseStep {
+  stepNumber: number;
+  action: string;
+  expectedResult: string;
+}
+
+export interface TestSuite {
+  id: string;
+  projectId: string;
+  name: string;
+  description?: string | null;
+  parentId?: string | null;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    testCases: number;
   };
 }
+
+export interface TestSuiteTreeNode {
+  id: string;
+  projectId: string;
+  name: string;
+  description?: string | null;
+  parentId?: string | null;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+  testCaseCount: number;
+  totalCaseCount: number;
+  children: TestSuiteTreeNode[];
+}
+
+export interface TestCase {
+  id: string;
+  projectId: string;
+  suiteId?: string | null;
+  code: string;
+  title: string;
+  description?: string | null;
+  preconditions?: string | null;
+  steps: TestCaseStep[];
+  priority: TestCasePriority;
+  status: TestCaseStatus;
+  tags: string[];
+  order: number;
+  version: number;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  suite?: {
+    id: string;
+    name: string;
+  } | null;
+  createdBy?: {
+    id: string;
+    fullName: string;
+    email: string;
+  };
+}
+
+export interface TestCaseHistory {
+  id: string;
+  testCaseId: string;
+  version: number;
+  title: string;
+  description?: string | null;
+  preconditions?: string | null;
+  steps: TestCaseStep[];
+  priority: TestCasePriority;
+  status: TestCaseStatus;
+  tags: string[];
+  changedById: string;
+  changeReason?: string | null;
+  createdAt: string;
+  changedBy?: {
+    id: string;
+    fullName: string;
+    email: string;
+  };
+}
+
