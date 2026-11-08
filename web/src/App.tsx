@@ -9,6 +9,7 @@ import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { UsersManagementPage } from './pages/UsersManagementPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { TestRepositoryPage } from './pages/TestRepositoryPage';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -64,7 +65,9 @@ export const App: React.FC = () => {
               path="/"
               element={
                 <ProtectedRoute>
-                  <MainLayout />
+                  <ErrorBoundary>
+                    <MainLayout />
+                  </ErrorBoundary>
                 </ProtectedRoute>
               }
             >

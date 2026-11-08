@@ -42,18 +42,25 @@ export const TestCaseModal: React.FC<TestCaseModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // Steps state
-  const [steps, setSteps] = useState<TestCaseStep[]>(
-    editingTestCase?.steps && editingTestCase.steps.length > 0
-      ? editingTestCase.steps
-      : [{ stepNumber: 1, action: '', expectedResult: '' }],
-  );
+  const [steps, setSteps] = useState<TestCaseStep[]>(() => {
+    const rawSteps = editingTestCase?.steps;
+    if (Array.isArray(rawSteps) && rawSteps.length > 0) return rawSteps;
+    if (typeof rawSteps === 'string') {
+      try {
+        const parsed = JSON.parse(rawSteps);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return [{ stepNumber: 1, action: '', expectedResult: '' }];
+  });
 
   // Helper to flatten suites for dropdown
-  const flattenSuites = (nodes: TestSuiteTreeNode[], depth = 0): { id: string; name: string }[] => {
+  const flattenSuites = (nodes: TestSuiteTreeNode[] = [], depth = 0): { id: string; name: string }[] => {
+    if (!Array.isArray(nodes)) return [];
     let result: { id: string; name: string }[] = [];
     nodes.forEach((n) => {
       result.push({ id: n.id, name: `${'— '.repeat(depth)}${n.name}` });
-      if (n.children && n.children.length > 0) {
+      if (Array.isArray(n.children) && n.children.length > 0) {
         result = result.concat(flattenSuites(n.children, depth + 1));
       }
     });

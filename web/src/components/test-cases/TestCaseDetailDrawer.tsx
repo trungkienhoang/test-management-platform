@@ -33,7 +33,7 @@ export const TestCaseDetailDrawer: React.FC<TestCaseDetailDrawerProps> = ({
   });
 
   // Fetch Version History
-  const { data: histories = [], isLoading: isHistoryLoading } = useQuery<TestCaseHistory[]>({
+  const { data: rawHistories = [], isLoading: isHistoryLoading } = useQuery<TestCaseHistory[]>({
     queryKey: ['test-case-histories', projectId, testCaseId],
     queryFn: async () => {
       const res = await apiClient.get<TestCaseHistory[]>(
@@ -44,11 +44,53 @@ export const TestCaseDetailDrawer: React.FC<TestCaseDetailDrawerProps> = ({
     enabled: !!testCaseId && activeTab === 'HISTORY',
   });
 
+  const histories = Array.isArray(rawHistories) ? rawHistories : [];
+
+  // Auto-initialize diff versions if not set
+  React.useEffect(() => {
+    if (histories.length >= 2) {
+      if (diffBaseVersion === null) setDiffBaseVersion(histories[histories.length - 1].version);
+      if (diffTargetVersion === null) setDiffTargetVersion(histories[0].version);
+    }
+  }, [histories, diffBaseVersion, diffTargetVersion]);
+
   if (!testCaseId) return null;
 
   // Selected history snapshots for Diff comparison
   const baseHistory = histories.find((h) => h.version === diffBaseVersion);
   const targetHistory = histories.find((h) => h.version === diffTargetVersion);
+
+  const getStepsCount = (steps: any): number => {
+    if (Array.isArray(steps)) return steps.length;
+    if (typeof steps === 'string') {
+      try {
+        const p = JSON.parse(steps);
+        if (Array.isArray(p)) return p.length;
+      } catch {}
+    }
+    return 0;
+  };
+
+  const normalizedSteps: any[] = (() => {
+    if (!testCase?.steps) return [];
+    if (Array.isArray(testCase.steps)) return testCase.steps;
+    if (typeof testCase.steps === 'string') {
+      try {
+        const parsed = JSON.parse(testCase.steps);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {}
+    }
+    return [];
+  })();
+
+  const normalizedTags: string[] = (() => {
+    if (!testCase?.tags) return [];
+    if (Array.isArray(testCase.tags)) return testCase.tags;
+    if (typeof testCase.tags === 'string') {
+      return (testCase.tags as string).split(',').map((t) => t.trim()).filter(Boolean);
+    }
+    return [];
+  })();
 
   const getPriorityBadge = (p: string) => {
     switch (p) {
@@ -190,10 +232,10 @@ export const TestCaseDetailDrawer: React.FC<TestCaseDetailDrawerProps> = ({
                   {/* Steps Table */}
                   <div>
                     <h4 className="font-bold text-slate-800 mb-2 flex items-center justify-between">
-                      <span>Các bước thực hiện ({testCase.steps?.length || 0} bước):</span>
+                      <span>Các bước thực hiện ({normalizedSteps.length} bước):</span>
                     </h4>
 
-                    {(!testCase.steps || testCase.steps.length === 0) ? (
+                    {normalizedSteps.length === 0 ? (
                       <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-slate-400">
                         Chưa có bước thực hiện cụ thể.
                       </div>
@@ -208,10 +250,10 @@ export const TestCaseDetailDrawer: React.FC<TestCaseDetailDrawerProps> = ({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {testCase.steps.map((step) => (
-                              <tr key={step.stepNumber} className="hover:bg-slate-50">
+                            {normalizedSteps.map((step: any, idx: number) => (
+                              <tr key={step.stepNumber || idx + 1} className="hover:bg-slate-50">
                                 <td className="py-2.5 px-3 text-center font-bold text-indigo-600 font-mono">
-                                  {step.stepNumber}
+                                  {step.stepNumber || idx + 1}
                                 </td>
                                 <td className="py-2.5 px-3 text-slate-800 font-medium whitespace-pre-line">
                                   {step.action}
@@ -228,11 +270,11 @@ export const TestCaseDetailDrawer: React.FC<TestCaseDetailDrawerProps> = ({
                   </div>
 
                   {/* Tags */}
-                  {testCase.tags && testCase.tags.length > 0 && (
+                  {normalizedTags.length > 0 && (
                     <div>
                       <h4 className="font-bold text-slate-700 mb-1.5">Thẻ phân loại (Tags):</h4>
                       <div className="flex flex-wrap gap-1.5">
-                        {testCase.tags.map((t) => (
+                        {normalizedTags.map((t) => (
                           <span
                             key={t}
                             className="bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-medium border border-indigo-200 text-[11px]"
@@ -361,8 +403,8 @@ export const TestCaseDetailDrawer: React.FC<TestCaseDetailDrawerProps> = ({
 
                           {/* Steps diff count */}
                           <div className="text-slate-600 bg-white p-2 rounded-lg border border-slate-200">
-                            Số bước: <strong>{baseHistory.steps?.length || 0}</strong> (cũ) ➔{' '}
-                            <strong className="text-indigo-600">{targetHistory.steps?.length || 0}</strong> (mới).
+                            Số bước: <strong>{getStepsCount(baseHistory.steps)}</strong> (cũ) ➔{' '}
+                            <strong className="text-indigo-600">{getStepsCount(targetHistory.steps)}</strong> (mới).
                           </div>
                         </div>
                       )}
@@ -407,7 +449,7 @@ export const TestCaseDetailDrawer: React.FC<TestCaseDetailDrawerProps> = ({
                                   {h.changedBy?.fullName || 'Hệ thống'}
                                 </strong>
                               </span>
-                              <span>{h.steps?.length || 0} bước thực hiện</span>
+                              <span>{getStepsCount(h.steps)} bước thực hiện</span>
                             </div>
                           </div>
                         </div>

@@ -44,16 +44,22 @@ export const TestRepositoryPage: React.FC = () => {
   const [importExportMode, setImportExportMode] = useState<'IMPORT' | 'EXPORT'>('IMPORT');
 
   // Fetch list of user projects (for project switcher if needed)
-  const { data: projects = [] } = useQuery<Project[]>({
+  const { data: projectsData, isLoading: isProjectsLoading } = useQuery<any>({
     queryKey: ['projects'],
     queryFn: async () => {
-      const res = await apiClient.get<Project[]>('/projects');
+      const res = await apiClient.get('/projects');
       return res.data;
     },
   });
 
+  const projects: Project[] = Array.isArray(projectsData)
+    ? projectsData
+    : Array.isArray(projectsData?.data)
+      ? projectsData.data
+      : [];
+
   // Effective project ID (fall back to first available project if none specified)
-  const effectiveProjectId = selectedProjectId || (projects.length > 0 ? projects[0].id : null);
+  const effectiveProjectId = paramProjectId || selectedProjectId || (projects.length > 0 ? projects[0].id : null);
 
   // Fetch current project details
   const { data: currentProject } = useQuery<Project>({
@@ -66,7 +72,7 @@ export const TestRepositoryPage: React.FC = () => {
   });
 
   // Fetch current project members to check permissions
-  const { data: members = [] } = useQuery<ProjectMember[]>({
+  const { data: rawMembers = [] } = useQuery<ProjectMember[]>({
     queryKey: ['project-members', effectiveProjectId],
     queryFn: async () => {
       const res = await apiClient.get<ProjectMember[]>(`/projects/${effectiveProjectId}/members`);
@@ -75,6 +81,7 @@ export const TestRepositoryPage: React.FC = () => {
     enabled: !!effectiveProjectId,
   });
 
+  const members = Array.isArray(rawMembers) ? rawMembers : [];
   const currentUserMember = members.find((m) => m.userId === user?.id);
   const canManage =
     user?.systemRole === 'ADMIN' ||
@@ -83,7 +90,7 @@ export const TestRepositoryPage: React.FC = () => {
   const canWrite = canManage || currentUserMember?.role === 'TESTER';
 
   // Fetch Test Suites for dropdowns
-  const { data: suites = [] } = useQuery<TestSuiteTreeNode[]>({
+  const { data: rawSuites = [] } = useQuery<TestSuiteTreeNode[]>({
     queryKey: ['test-suites', effectiveProjectId],
     queryFn: async () => {
       const res = await apiClient.get<TestSuiteTreeNode[]>(`/projects/${effectiveProjectId}/suites`);
@@ -91,6 +98,8 @@ export const TestRepositoryPage: React.FC = () => {
     },
     enabled: !!effectiveProjectId,
   });
+
+  const suites = Array.isArray(rawSuites) ? rawSuites : [];
 
   // Fetch Test Cases with search, filter, and pagination
   const { data: casesData, isLoading: isCasesLoading } = useQuery<PaginatedResponse<TestCase>>({
@@ -168,6 +177,15 @@ export const TestRepositoryPage: React.FC = () => {
     }
   };
 
+  if (isProjectsLoading) {
+    return (
+      <div className="p-16 text-center text-slate-500 text-sm">
+        <span className="text-3xl animate-bounce block mb-2">📑</span>
+        Đang tải thông tin dự án và kho kiểm thử...
+      </div>
+    );
+  }
+
   if (!effectiveProjectId) {
     return (
       <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center max-w-md mx-auto mt-12">
@@ -213,11 +231,15 @@ export const TestRepositoryPage: React.FC = () => {
         <div className="flex items-center gap-2 self-start sm:self-center">
           <label className="text-xs font-semibold text-slate-500 whitespace-nowrap">Dự án:</label>
           <select
-            value={effectiveProjectId}
+            value={effectiveProjectId || ''}
             onChange={(e) => {
-              setSelectedProjectId(e.target.value);
+              const newProjId = e.target.value;
+              setSelectedProjectId(newProjId);
               setSelectedSuiteId(null);
               setPage(1);
+              if (paramProjectId) {
+                navigate(`/projects/${newProjId}/repository`);
+              }
             }}
             className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
           >

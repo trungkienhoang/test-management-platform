@@ -28,7 +28,7 @@ export const TestSuiteTree: React.FC<TestSuiteTreeProps> = ({
   const [modalError, setModalError] = useState<string | null>(null);
 
   // Fetch Suites tree
-  const { data: suites = [], isLoading } = useQuery<TestSuiteTreeNode[]>({
+  const { data: rawSuites = [], isLoading } = useQuery<TestSuiteTreeNode[]>({
     queryKey: ['test-suites', projectId],
     queryFn: async () => {
       const res = await apiClient.get<TestSuiteTreeNode[]>(`/projects/${projectId}/suites`);
@@ -37,8 +37,10 @@ export const TestSuiteTree: React.FC<TestSuiteTreeProps> = ({
     enabled: !!projectId,
   });
 
+  const suites = Array.isArray(rawSuites) ? rawSuites : [];
+
   // Calculate total cases in all suites
-  const totalAllCases = suites.reduce((acc, s) => acc + s.totalCaseCount, 0);
+  const totalAllCases = suites.reduce((acc, s) => acc + (s.totalCaseCount || s.testCaseCount || 0), 0);
 
   // Toggle node expand/collapse
   const toggleExpand = (id: string, e: React.MouseEvent) => {
@@ -239,7 +241,7 @@ export const TestSuiteTree: React.FC<TestSuiteTreeProps> = ({
         </div>
 
         {/* Render child nodes if expanded */}
-        {hasChildren && isExpanded && (
+        {hasChildren && isExpanded && Array.isArray(node.children) && (
           <div className="mt-0.5">
             {node.children.map((child) => renderTreeNode(child, depth + 1))}
           </div>

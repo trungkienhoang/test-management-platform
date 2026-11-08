@@ -80,9 +80,10 @@ export const ProjectDetailPage: React.FC = () => {
 
   // Helper to count suites recursively
   const countSuitesRecursive = (nodes: TestSuiteTreeNode[]): number => {
+    if (!Array.isArray(nodes)) return 0;
     return nodes.reduce((acc, node) => acc + 1 + (node.children ? countSuitesRecursive(node.children) : 0), 0);
   };
-  const totalSuitesCount = countSuitesRecursive(suites);
+  const totalSuitesCount = countSuitesRecursive(Array.isArray(suites) ? suites : []);
 
   // Permissions check
   const currentUserMember = members?.find((m) => m.userId === user?.id);
