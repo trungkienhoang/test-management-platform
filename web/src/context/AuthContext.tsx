@@ -10,6 +10,8 @@ interface AuthContextType {
   sendRegisterOtp: (email: string, fullName: string, password: string) => Promise<{ message: string; email: string; devOtp?: string }>;
   verifyRegisterOtp: (email: string, otp: string) => Promise<void>;
   resendRegisterOtp: (email: string) => Promise<{ message: string; devOtp?: string }>;
+  forgotPassword: (email: string) => Promise<{ message: string; email: string; devOtp?: string }>;
+  resetPassword: (email: string, otp: string, newPassword: string) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   updateUserData: (updated: Partial<User>) => void;
 }
@@ -83,6 +85,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return res.data;
   };
 
+  const forgotPassword = async (email: string) => {
+    const res = await apiClient.post<{ message: string; email: string; devOtp?: string }>(
+      '/auth/forgot-password',
+      { email },
+    );
+    return res.data;
+  };
+
+  const resetPassword = async (email: string, otp: string, newPassword: string) => {
+    const res = await apiClient.post<{ message: string }>('/auth/reset-password', {
+      email,
+      otp,
+      newPassword,
+    });
+    return res.data;
+  };
+
   const logout = async () => {
     const refreshToken = localStorage.getItem('refreshToken');
     try {
@@ -118,6 +137,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sendRegisterOtp,
         verifyRegisterOtp,
         resendRegisterOtp,
+        forgotPassword,
+        resetPassword,
         logout,
         updateUserData,
       }}

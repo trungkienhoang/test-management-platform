@@ -3,6 +3,7 @@ import {
   ConflictException,
   UnauthorizedException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +14,8 @@ import { MailService } from '../mail/mail.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { VerifyOtpDto, ResendOtpDto } from './dto/verify-otp.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { JwtPayload } from './strategies/jwt.strategy.js';
 import { SystemRole } from '@prisma/client';
 
@@ -197,6 +200,136 @@ export class AuthService {
       email,
       expiresInSeconds: 300,
       devOtp: isConfigured ? undefined : rawOtp,
+    };
+  }
+
+  // ─── FORGOT & RESET PASSWORD (OTP) ──────────────────────────────────────────
+
+  /**
+   * Yêu cầu gửi mã OTP để đặt lại mật khẩu
+   */
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const email = dto.email.trim().toLowerCase();
+
+    // 1. Kiểm tra tài khoản người dùng có tồn tại không
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản với email này trong hệ thống.');
+    }
+
+    if (!user.isActive) {
+      throw new BadRequestException('Tài khoản này hiện đang bị khóa. Vui lòng liên hệ Quản trị viên để được hỗ trợ.');
+    }
+
+    // 2. Rate limit: tối thiểu 60 giây giữa các lần yêu cầu
+    const recentReset = await this.prisma.passwordReset.findFirst({
+      where: { email },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (recentReset) {
+      const secondsSinceLast = (Date.now() - recentReset.createdAt.getTime()) / 1000;
+      if (secondsSinceLast < 60) {
+        const waitSeconds = Math.ceil(60 - secondsSinceLast);
+        throw new BadRequestException(`Vui lòng chờ thêm ${waitSeconds} giây trước khi yêu cầu lại mã OTP mới.`);
+      }
+    }
+
+    // 3. Sinh mã OTP 6 chữ số
+    const rawOtp = crypto.randomInt(100000, 1000000).toString();
+    const otpHash = this.hashOtp(rawOtp);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 phút
+
+    // 4. Xóa các mã reset cũ của email này
+    await this.prisma.passwordReset.deleteMany({ where: { email } });
+
+    // 5. Lưu mã reset mới vào bảng password_resets
+    await this.prisma.passwordReset.create({
+      data: {
+        email,
+        otpHash,
+        expiresAt,
+      },
+    });
+
+    // 6. Gửi email OTP
+    const sent = await this.mailService.sendPasswordResetOtp(email, rawOtp, user.fullName);
+    const isConfigured = this.mailService.isConfigured();
+
+    return {
+      message: isConfigured && sent
+        ? `Mã OTP đặt lại mật khẩu gồm 6 chữ số đã được gửi tới email ${email}. Vui lòng kiểm tra hộp thư của bạn.`
+        : `[DEV - Chưa cấu hình Gmail] Mã OTP đặt lại mật khẩu của bạn là: ${rawOtp}`,
+      email,
+      expiresInSeconds: 300,
+      devOtp: isConfigured ? undefined : rawOtp,
+    };
+  }
+
+  /**
+   * Xác thực mã OTP và cập nhật mật khẩu mới
+   */
+  async resetPassword(dto: ResetPasswordDto) {
+    const email = dto.email.trim().toLowerCase();
+    const otp = dto.otp.trim();
+
+    // 1. Tìm bản ghi OTP đặt lại mật khẩu
+    const record = await this.prisma.passwordReset.findFirst({
+      where: { email },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!record) {
+      throw new BadRequestException('Không tìm thấy yêu cầu đặt lại mật khẩu cho email này hoặc mã đã hết hạn. Vui lòng thử lại.');
+    }
+
+    // 2. Kiểm tra thời hạn hiệu lực (5 phút)
+    if (record.expiresAt < new Date()) {
+      await this.prisma.passwordReset.delete({ where: { id: record.id } });
+      throw new BadRequestException('Mã OTP đã hết hạn (sau 5 phút). Vui lòng yêu cầu lại mã mới.');
+    }
+
+    // 3. Kiểm tra số lần thử sai (tối đa 5 lần)
+    if (record.attempts >= 5) {
+      await this.prisma.passwordReset.delete({ where: { id: record.id } });
+      throw new BadRequestException('Bạn đã nhập sai mã OTP quá 5 lần. Vui lòng yêu cầu lại mã mới.');
+    }
+
+    // 4. So khớp mã OTP
+    const inputHash = this.hashOtp(otp);
+    if (inputHash !== record.otpHash) {
+      await this.prisma.passwordReset.update({
+        where: { id: record.id },
+        data: { attempts: { increment: 1 } },
+      });
+      const remaining = 5 - (record.attempts + 1);
+      throw new BadRequestException(`Mã xác thực OTP không chính xác. Bạn còn ${remaining} lần thử.`);
+    }
+
+    // 5. Tìm user tương ứng
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      throw new NotFoundException('Tài khoản người dùng không tồn tại.');
+    }
+
+    // 6. Băm mật khẩu mới và lưu vào cơ sở dữ liệu
+    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    // 7. Thu hồi tất cả refresh token cũ vì lý do an toàn
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    // 8. Xóa bản ghi OTP đặt lại mật khẩu đã sử dụng
+    await this.prisma.passwordReset.deleteMany({ where: { email } });
+
+    return {
+      message: 'Đặt lại mật khẩu thành công! Bạn có thể đăng nhập bằng mật khẩu mới.',
     };
   }
 

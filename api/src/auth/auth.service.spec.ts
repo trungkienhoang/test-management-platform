@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthService } from './auth.service.js';
-import { ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  ConflictException,
+  UnauthorizedException,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import * as crypto from 'crypto';
 
 // Mock PrismaService
@@ -8,6 +13,7 @@ const mockPrisma = {
   user: {
     findUnique: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
   },
   refreshToken: {
     findUnique: vi.fn(),
@@ -22,12 +28,20 @@ const mockPrisma = {
     delete: vi.fn(),
     update: vi.fn(),
   },
+  passwordReset: {
+    findFirst: vi.fn(),
+    deleteMany: vi.fn(),
+    delete: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
 };
 
 const mockJwt = { sign: vi.fn(() => 'mock.access.token') };
 const mockConfig = { getOrThrow: vi.fn(() => 'mock-secret'), get: vi.fn(() => '7') };
 const mockMail = {
   sendOtpEmail: vi.fn().mockResolvedValue(true),
+  sendPasswordResetOtp: vi.fn().mockResolvedValue(true),
   isConfigured: vi.fn().mockReturnValue(true),
 };
 
@@ -177,6 +191,104 @@ describe('AuthService', () => {
       });
 
       await expect(service.refresh('revoked-token')).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
+  // ─── FORGOT PASSWORD ────────────────────────────────────────────────────────
+
+  describe('forgotPassword', () => {
+    it('gửi OTP đặt lại mật khẩu thành công khi email tồn tại', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        email: 'user@gmail.com',
+        fullName: 'Nguyen Van A',
+        isActive: true,
+      });
+      mockPrisma.passwordReset.findFirst.mockResolvedValue(null);
+      mockPrisma.passwordReset.deleteMany.mockResolvedValue({});
+      mockPrisma.passwordReset.create.mockResolvedValue({});
+
+      const result = await service.forgotPassword({ email: 'user@gmail.com' });
+
+      expect(result.email).toBe('user@gmail.com');
+      expect(mockMail.sendPasswordResetOtp).toHaveBeenCalledOnce();
+      expect(mockPrisma.passwordReset.create).toHaveBeenCalledOnce();
+    });
+
+    it('ném NotFoundException khi không tìm thấy email người dùng', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.forgotPassword({ email: 'unknown@gmail.com' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('ném BadRequestException khi tài khoản bị khóa', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        email: 'locked@gmail.com',
+        isActive: false,
+      });
+
+      await expect(
+        service.forgotPassword({ email: 'locked@gmail.com' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  // ─── RESET PASSWORD ─────────────────────────────────────────────────────────
+
+  describe('resetPassword', () => {
+    it('xác thực OTP đúng và cập nhật mật khẩu mới thành công', async () => {
+      const plainOtp = '654321';
+      const otpHash = crypto.createHash('sha256').update(plainOtp).digest('hex');
+
+      mockPrisma.passwordReset.findFirst.mockResolvedValue({
+        id: 'pr-1',
+        email: 'user@gmail.com',
+        otpHash,
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 100000),
+      });
+
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        email: 'user@gmail.com',
+      });
+      mockPrisma.user.update.mockResolvedValue({});
+      mockPrisma.refreshToken.updateMany.mockResolvedValue({});
+      mockPrisma.passwordReset.deleteMany.mockResolvedValue({});
+
+      const result = await service.resetPassword({
+        email: 'user@gmail.com',
+        otp: '654321',
+        newPassword: 'NewPassword123!',
+      });
+
+      expect(result.message).toContain('thành công');
+      expect(mockPrisma.user.update).toHaveBeenCalledOnce();
+      expect(mockPrisma.refreshToken.updateMany).toHaveBeenCalledOnce();
+    });
+
+    it('ném BadRequestException khi OTP sai', async () => {
+      const realOtp = '654321';
+      const otpHash = crypto.createHash('sha256').update(realOtp).digest('hex');
+
+      mockPrisma.passwordReset.findFirst.mockResolvedValue({
+        id: 'pr-1',
+        email: 'user@gmail.com',
+        otpHash,
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 100000),
+      });
+
+      await expect(
+        service.resetPassword({
+          email: 'user@gmail.com',
+          otp: '000000',
+          newPassword: 'NewPassword123!',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 });

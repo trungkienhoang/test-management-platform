@@ -12,6 +12,8 @@ import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { VerifyOtpDto, ResendOtpDto } from './dto/verify-otp.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import type { JwtPayload } from './strategies/jwt.strategy.js';
@@ -43,6 +45,24 @@ export class AuthController {
   @ApiOperation({ summary: 'Gửi lại mã OTP qua email' })
   resendOtp(@Body() dto: ResendOtpDto) {
     return this.authService.resendOtp(dto);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Yêu cầu gửi mã OTP đặt lại mật khẩu' })
+  @ApiResponse({ status: 200, description: 'Đã gửi mã OTP về email' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy tài khoản với email này' })
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Xác thực OTP và đặt mật khẩu mới' })
+  @ApiResponse({ status: 200, description: 'Đổi mật khẩu thành công' })
+  @ApiResponse({ status: 400, description: 'Mã OTP không đúng hoặc đã hết hạn' })
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
   }
 
   @Post('login')

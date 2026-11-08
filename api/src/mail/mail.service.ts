@@ -117,4 +117,73 @@ export class MailService {
       return false;
     }
   }
+
+  async sendPasswordResetOtp(toEmail: string, otp: string, fullName: string): Promise<boolean> {
+    const user = this.config.get<string>('SMTP_USER')?.trim();
+    const from = user
+      ? `"Test Management Platform" <${user}>`
+      : '"Test Management Platform" <noreply@testplatform.dev>';
+
+    // Fallback log for development & debugging
+    this.logger.log(`\n======================================================\n` +
+      `🔐 [MÃ OTP ĐẶT LẠI MẬT KHẨU]\n` +
+      `Gửi tới: ${toEmail} (${fullName})\n` +
+      `Mã OTP: [ ${otp} ] (Hiệu lực: 5 phút)\n` +
+      `======================================================\n`);
+
+    if (!this.transporter) {
+      this.logger.warn(
+        `Không có kết nối SMTP thực tế. Hãy điền SMTP_USER và SMTP_PASS trong file .env để gửi email thật.`,
+      );
+      return true;
+    }
+
+    const htmlContent = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; background-color: #f8fafc; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="display: inline-block; width: 48px; height: 48px; line-height: 48px; font-size: 26px; background-color: #ef4444; color: #ffffff; border-radius: 12px;">🔐</div>
+          <h2 style="color: #0f172a; margin: 12px 0 4px 0; font-size: 22px; font-weight: 700;">Yêu cầu đặt lại mật khẩu</h2>
+          <p style="color: #64748b; font-size: 13px; margin: 0;">Test Management Platform</p>
+        </div>
+
+        <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <p style="font-size: 14px; color: #334155; margin-top: 0;">Xin chào <strong>${fullName}</strong>,</p>
+          <p style="font-size: 14px; color: #334155; line-height: 1.5;">
+            Hệ thống nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn. Vui lòng sử dụng mã xác thực OTP 6 số dưới đây để tiến hành đổi mật khẩu:
+          </p>
+
+          <div style="text-align: center; margin: 28px 0;">
+            <div style="display: inline-block; padding: 14px 28px; background-color: #fef2f2; border: 2px dashed #fca5a5; border-radius: 12px; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #dc2626; font-family: monospace;">
+              ${otp}
+            </div>
+            <p style="font-size: 12px; color: #64748b; margin-top: 8px;">Mã này có hiệu lực trong vòng <strong>5 phút</strong>.</p>
+          </div>
+
+          <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px; margin-top: 20px;">
+            <p style="font-size: 12px; color: #92400e; margin: 0; line-height: 1.4;">
+              ⚠️ <strong>Cảnh báo an toàn:</strong> Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email và bảo đảm mật khẩu hiện tại vẫn an toàn. Tuyệt đối không cung cấp mã OTP cho người khác.
+            </p>
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 24px; font-size: 11px; color: #94a3b8;">
+          © 2026 Test Management Platform. Hệ thống tự động gửi email, vui lòng không trả lời thư này.
+        </div>
+      </div>
+    `;
+
+    try {
+      await this.transporter.sendMail({
+        from,
+        to: toEmail,
+        subject: `[Test Platform] ${otp} là mã xác thực đặt lại mật khẩu của bạn`,
+        html: htmlContent,
+      });
+      this.logger.log(`✅ Đã gửi email OTP đặt lại mật khẩu thành công tới ${toEmail}`);
+      return true;
+    } catch (err) {
+      this.logger.error(`❌ Gửi email OTP đặt lại mật khẩu thất bại tới ${toEmail}:`, err);
+      return false;
+    }
+  }
 }
