@@ -11,7 +11,8 @@ interface AuthContextType {
   verifyRegisterOtp: (email: string, otp: string) => Promise<void>;
   resendRegisterOtp: (email: string) => Promise<{ message: string; devOtp?: string }>;
   forgotPassword: (email: string) => Promise<{ message: string; email: string; devOtp?: string }>;
-  resetPassword: (email: string, otp: string, newPassword: string) => Promise<{ message: string }>;
+  verifyResetOtp: (email: string, otp: string) => Promise<{ message: string; resetToken: string; email: string }>;
+  resetPassword: (params: { newPassword: string; resetToken?: string; email?: string; otp?: string }) => Promise<{ message: string; email?: string }>;
   logout: () => Promise<void>;
   updateUserData: (updated: Partial<User>) => void;
 }
@@ -93,12 +94,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return res.data;
   };
 
-  const resetPassword = async (email: string, otp: string, newPassword: string) => {
-    const res = await apiClient.post<{ message: string }>('/auth/reset-password', {
-      email,
-      otp,
-      newPassword,
-    });
+  const verifyResetOtp = async (email: string, otp: string) => {
+    const res = await apiClient.post<{ message: string; resetToken: string; email: string }>(
+      '/auth/verify-reset-otp',
+      { email, otp },
+    );
+    return res.data;
+  };
+
+  const resetPassword = async (params: {
+    newPassword: string;
+    resetToken?: string;
+    email?: string;
+    otp?: string;
+  }) => {
+    const res = await apiClient.post<{ message: string; email?: string }>(
+      '/auth/reset-password',
+      params,
+    );
     return res.data;
   };
 
@@ -138,6 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         verifyRegisterOtp,
         resendRegisterOtp,
         forgotPassword,
+        verifyResetOtp,
         resetPassword,
         logout,
         updateUserData,

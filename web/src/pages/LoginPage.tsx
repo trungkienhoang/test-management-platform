@@ -3,23 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 type AuthMode = 'LOGIN' | 'REGISTER' | 'FORGOT';
+type ForgotStep = 'EMAIL' | 'OTP' | 'NEW_PASSWORD';
 
 export const LoginPage: React.FC = () => {
   const [mode, setMode] = useState<AuthMode>('LOGIN');
   const [registerStep, setRegisterStep] = useState<'FORM' | 'OTP'>('FORM');
-  const [forgotStep, setForgotStep] = useState<'EMAIL' | 'RESET'>('EMAIL');
+  const [forgotStep, setForgotStep] = useState<ForgotStep>('EMAIL');
 
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [otp, setOtp] = useState('');
+  const [resetToken, setResetToken] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
   // UI status
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Resend cooldown timer
@@ -31,6 +34,7 @@ export const LoginPage: React.FC = () => {
     verifyRegisterOtp,
     resendRegisterOtp,
     forgotPassword,
+    verifyResetOtp,
     resetPassword,
   } = useAuth();
   const navigate = useNavigate();
@@ -48,10 +52,12 @@ export const LoginPage: React.FC = () => {
     setRegisterStep('FORM');
     setForgotStep('EMAIL');
     setOtp('');
+    setResetToken(null);
     setNewPassword('');
     setConfirmPassword('');
     setError(null);
     setInfoMessage(null);
+    setSuccessMessage(null);
     setCountdown(0);
   };
 
@@ -60,6 +66,7 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setInfoMessage(null);
+    setSuccessMessage(null);
     setIsLoading(true);
 
     try {
@@ -80,6 +87,7 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setInfoMessage(null);
+    setSuccessMessage(null);
     setIsLoading(true);
 
     try {
@@ -112,52 +120,102 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // ─── FORGOT PASSWORD SUBMIT ─────────────────────────────────────────────────
-  const handleForgotSubmit = async (e: React.FormEvent) => {
+  // ─── FORGOT PASSWORD: BƯỚC 1 - GỬI OTP VỀ EMAIL ─────────────────────────────
+  const handleForgotSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setInfoMessage(null);
+    setSuccessMessage(null);
     setIsLoading(true);
 
     try {
-      if (forgotStep === 'EMAIL') {
-        const res = await forgotPassword(email);
-        setInfoMessage(res.message);
-        if (res.devOtp) {
-          setOtp(res.devOtp);
-        }
-        setForgotStep('RESET');
-        setCountdown(60);
-      } else {
-        // Step RESET
-        if (!otp || otp.trim().length !== 6) {
-          setError('Vui lòng nhập đúng 6 chữ số mã OTP');
-          setIsLoading(false);
-          return;
-        }
-        if (newPassword.length < 8) {
-          setError('Mật khẩu mới phải có ít nhất 8 ký tự');
-          setIsLoading(false);
-          return;
-        }
-        if (newPassword !== confirmPassword) {
-          setError('Xác nhận mật khẩu mới không trùng khớp');
-          setIsLoading(false);
-          return;
-        }
-
-        const res = await resetPassword(email, otp.trim(), newPassword);
-        // Reset password succeeded! Switch back to LOGIN with success message
-        switchMode('LOGIN');
-        setPassword('');
-        setInfoMessage(res.message || 'Đặt lại mật khẩu thành công! Vui lòng đăng nhập.');
+      const res = await forgotPassword(email);
+      setInfoMessage(res.message);
+      if (res.devOtp) {
+        setOtp(res.devOtp);
       }
+      setForgotStep('OTP');
+      setCountdown(60);
     } catch (err: any) {
       setError(
         err.response?.data?.message ||
-          (forgotStep === 'RESET'
-            ? 'Đổi mật khẩu thất bại, vui lòng kiểm tra mã OTP'
-            : 'Không thể gửi yêu cầu đặt lại mật khẩu'),
+          'Không thể gửi yêu cầu đặt lại mật khẩu. Vui lòng thử lại.',
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ─── FORGOT PASSWORD: BƯỚC 2 - XÁC THỰC MÃ OTP ─────────────────────────────
+  const handleForgotVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setInfoMessage(null);
+    setSuccessMessage(null);
+
+    if (!otp || otp.trim().length !== 6) {
+      setError('Vui lòng nhập đầy đủ 6 chữ số mã OTP');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Chỉ khi verify OTP thành công trên máy chủ mới cấp resetToken và chuyển sang bước 3
+      const res = await verifyResetOtp(email, otp.trim());
+      setResetToken(res.resetToken);
+      setInfoMessage('Xác thực OTP thành công! Vui lòng thiết lập mật khẩu mới.');
+      setForgotStep('NEW_PASSWORD');
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message ||
+          'Mã xác thực OTP không đúng hoặc đã hết hạn. Vui lòng kiểm tra lại.',
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ─── FORGOT PASSWORD: BƯỚC 3 - LƯU MẬT KHẨU MỚI & VỀ TRANG ĐĂNG NHẬP ────────
+  const handleForgotSetNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setInfoMessage(null);
+    setSuccessMessage(null);
+
+    if (newPassword.length < 8) {
+      setError('Mật khẩu mới phải có ít nhất 8 ký tự');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('Xác nhận mật khẩu mới không trùng khớp');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const res = await resetPassword({
+        newPassword,
+        resetToken: resetToken || undefined,
+        email,
+        otp: otp.trim(),
+      });
+
+      // Đổi mật khẩu thành công:
+      // Chuyển ngay về màn hình ĐĂNG NHẬP, giữ lại email và hiển thị thông báo thành công xanh lá
+      const rememberedEmail = res.email || email;
+      switchMode('LOGIN');
+      setEmail(rememberedEmail);
+      setPassword('');
+      setSuccessMessage(
+        res.message || 'Đặt lại mật khẩu thành công! Vui lòng đăng nhập với mật khẩu mới.',
+      );
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message ||
+          'Đổi mật khẩu thất bại. Vui lòng thử lại từ đầu.',
       );
     } finally {
       setIsLoading(false);
@@ -169,6 +227,7 @@ export const LoginPage: React.FC = () => {
     if (countdown > 0 || isLoading) return;
     setError(null);
     setInfoMessage(null);
+    setSuccessMessage(null);
     setIsLoading(true);
 
     try {
@@ -196,6 +255,7 @@ export const LoginPage: React.FC = () => {
     switchMode('LOGIN');
     setError(null);
     setInfoMessage(null);
+    setSuccessMessage(null);
     setIsLoading(true);
     try {
       await login(quickEmail, quickPass);
@@ -227,13 +287,23 @@ export const LoginPage: React.FC = () => {
                 ? 'Nhập mã xác thực gửi về hộp thư'
                 : 'Đăng ký tài khoản mới bằng Email thực tế')}
             {mode === 'FORGOT' &&
-              (forgotStep === 'RESET'
-                ? 'Nhập OTP và thiết lập mật khẩu mới'
-                : 'Khôi phục mật khẩu tài khoản qua Email')}
+              (forgotStep === 'EMAIL'
+                ? 'Bước 1: Nhập email tài khoản cần khôi phục'
+                : forgotStep === 'OTP'
+                ? 'Bước 2: Xác nhận mã OTP đã gửi về hòm thư'
+                : 'Bước 3: Thiết lập mật khẩu mới')}
           </p>
         </div>
 
-        {/* Info message */}
+        {/* Success message banner */}
+        {successMessage && (
+          <div className="mb-4 p-3 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 text-xs rounded flex items-center gap-2">
+            <span>✅</span>
+            <span className="leading-relaxed font-medium">{successMessage}</span>
+          </div>
+        )}
+
+        {/* Info message banner */}
         {infoMessage && (
           <div className="mb-4 p-3 bg-indigo-50 border-l-4 border-indigo-500 text-indigo-800 text-xs rounded flex items-center gap-2">
             <span>📩</span>
@@ -241,14 +311,14 @@ export const LoginPage: React.FC = () => {
           </div>
         )}
 
-        {/* Error message */}
+        {/* Error message banner */}
         {error && (
           <div className="mb-4 p-3 bg-rose-50 border-l-4 border-rose-500 text-rose-700 text-xs rounded leading-relaxed">
             {error}
           </div>
         )}
 
-        {/* ─── VIEW 1: LOGIN FORM ─── */}
+        {/* ─── VIEW 1: FORM ĐĂNG NHẬP (LOGIN) ─── */}
         {mode === 'LOGIN' && (
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
@@ -296,7 +366,7 @@ export const LoginPage: React.FC = () => {
           </form>
         )}
 
-        {/* ─── VIEW 2: REGISTER FORM ─── */}
+        {/* ─── VIEW 2: FORM ĐĂNG KÝ (REGISTER) ─── */}
         {mode === 'REGISTER' && (
           <form onSubmit={handleRegisterSubmit} className="space-y-4">
             {registerStep === 'FORM' ? (
@@ -420,13 +490,76 @@ export const LoginPage: React.FC = () => {
           </form>
         )}
 
-        {/* ─── VIEW 3: FORGOT PASSWORD FLOW ─── */}
+        {/* ─── VIEW 3: LUỒNG QUÊN MẬT KHẨU 3 BƯỚC (FORGOT PASSWORD) ─── */}
         {mode === 'FORGOT' && (
-          <form onSubmit={handleForgotSubmit} className="space-y-4">
-            {forgotStep === 'EMAIL' ? (
-              <>
+          <div className="space-y-4">
+            {/* Visual Step Indicator */}
+            <div className="flex items-center justify-between px-2 pb-2 border-b border-slate-100 text-[11px]">
+              <div
+                className={`flex items-center gap-1 font-semibold ${
+                  forgotStep === 'EMAIL' ? 'text-amber-600' : 'text-slate-400'
+                }`}
+              >
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                    forgotStep === 'EMAIL'
+                      ? 'bg-amber-600 text-white'
+                      : forgotStep === 'OTP' || forgotStep === 'NEW_PASSWORD'
+                      ? 'bg-emerald-100 text-emerald-700 font-bold'
+                      : 'bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {forgotStep === 'OTP' || forgotStep === 'NEW_PASSWORD' ? '✓' : '1'}
+                </span>
+                <span>Nhập Email</span>
+              </div>
+
+              <span className="text-slate-300">→</span>
+
+              <div
+                className={`flex items-center gap-1 font-semibold ${
+                  forgotStep === 'OTP' ? 'text-amber-600' : 'text-slate-400'
+                }`}
+              >
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                    forgotStep === 'OTP'
+                      ? 'bg-amber-600 text-white'
+                      : forgotStep === 'NEW_PASSWORD'
+                      ? 'bg-emerald-100 text-emerald-700 font-bold'
+                      : 'bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {forgotStep === 'NEW_PASSWORD' ? '✓' : '2'}
+                </span>
+                <span>Nhập OTP</span>
+              </div>
+
+              <span className="text-slate-300">→</span>
+
+              <div
+                className={`flex items-center gap-1 font-semibold ${
+                  forgotStep === 'NEW_PASSWORD' ? 'text-amber-600' : 'text-slate-400'
+                }`}
+              >
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                    forgotStep === 'NEW_PASSWORD'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  3
+                </span>
+                <span>Mật khẩu mới</span>
+              </div>
+            </div>
+
+            {/* BƯỚC 1: NHẬP EMAIL */}
+            {forgotStep === 'EMAIL' && (
+              <form onSubmit={handleForgotSendOtp} className="space-y-4">
                 <p className="text-xs text-slate-600 leading-relaxed bg-amber-50 p-3 rounded-lg border border-amber-200">
-                  Nhập địa chỉ email tài khoản của bạn. Hệ thống sẽ gửi mã xác thực OTP 6 số để bạn tiến hành đặt lại mật khẩu mới.
+                  Nhập địa chỉ email tài khoản của bạn. Hệ thống sẽ gửi mã xác thực OTP 6 số để bạn tiến hành đặt lại mật khẩu.
                 </p>
 
                 <div>
@@ -446,10 +579,10 @@ export const LoginPage: React.FC = () => {
 
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || !email.trim()}
                   className="w-full mt-2 bg-amber-600 hover:bg-amber-700 text-white font-medium py-2.5 rounded-lg text-sm transition shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {isLoading ? 'Đang gửi...' : '📩 Gửi mã OTP đặt lại mật khẩu'}
+                  {isLoading ? 'Đang gửi mã...' : '📩 Gửi mã OTP xác thực'}
                 </button>
 
                 <div className="text-center pt-2">
@@ -461,10 +594,12 @@ export const LoginPage: React.FC = () => {
                     ← Quay lại Đăng nhập
                   </button>
                 </div>
-              </>
-            ) : (
-              /* Forgot Step RESET */
-              <div className="space-y-3.5">
+              </form>
+            )}
+
+            {/* BƯỚC 2: NHẬP OTP XÁC NHẬN (ĐÚNG MỚI CHUYỂN SANG BƯỚC 3) */}
+            {forgotStep === 'OTP' && (
+              <form onSubmit={handleForgotVerifyOtp} className="space-y-4">
                 <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-center">
                   <span className="text-[11px] text-amber-700">Mã OTP đặt lại mật khẩu đã gửi tới:</span>
                   <div className="text-xs font-bold text-amber-900 font-mono mt-0.5">{email}</div>
@@ -482,47 +617,19 @@ export const LoginPage: React.FC = () => {
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                     placeholder="123456"
-                    className="w-full px-3 py-2 text-center tracking-[8px] font-mono text-xl font-bold rounded-lg border-2 border-amber-500 bg-amber-50/20 text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-600"
+                    className="w-full px-4 py-3 text-center tracking-[10px] font-mono text-2xl font-bold rounded-xl border-2 border-amber-500 bg-amber-50/20 text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-600"
                   />
-                  <p className="text-[11px] text-slate-400 text-center mt-0.5">
-                    Mã có hiệu lực trong 5 phút
+                  <p className="text-[11px] text-slate-400 text-center mt-1">
+                    Mã có hiệu lực trong vòng 5 phút
                   </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Mật khẩu mới *
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Tối thiểu 8 ký tự (hoa, thường, số)"
-                    className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Xác nhận mật khẩu mới *
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Nhập lại mật khẩu mới"
-                    className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
                 </div>
 
                 <button
                   type="submit"
-                  disabled={isLoading || otp.length !== 6 || !newPassword || !confirmPassword}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 rounded-lg text-sm transition shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
+                  disabled={isLoading || otp.length !== 6}
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium py-2.5 rounded-lg text-sm transition shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {isLoading ? 'Đang cập nhật...' : '🔐 Xác nhận đổi mật khẩu'}
+                  {isLoading ? 'Đang kiểm tra OTP...' : '✅ Xác nhận mã OTP →'}
                 </button>
 
                 <div className="flex items-center justify-between text-xs pt-1">
@@ -551,12 +658,82 @@ export const LoginPage: React.FC = () => {
                     {countdown > 0 ? `Gửi lại sau (${countdown}s)` : 'Gửi lại mã OTP'}
                   </button>
                 </div>
-              </div>
+
+                <div className="text-center pt-1 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => switchMode('LOGIN')}
+                    className="text-xs text-slate-400 hover:text-slate-600 transition"
+                  >
+                    Hủy & Quay lại Đăng nhập
+                  </button>
+                </div>
+              </form>
             )}
-          </form>
+
+            {/* BƯỚC 3: NHẬP MẬT KHẨU MỚI (CHỈ XUẤT HIỆN SAU KHI OTP ĐÃ ĐÚNG) */}
+            {forgotStep === 'NEW_PASSWORD' && (
+              <form onSubmit={handleForgotSetNewPassword} className="space-y-3.5">
+                <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                  <span className="text-[11px] text-emerald-700">✓ Mã OTP đã được xác thực thành công cho:</span>
+                  <div className="text-xs font-bold text-emerald-900 font-mono mt-0.5">{email}</div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Mật khẩu mới *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    autoFocus
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Tối thiểu 8 ký tự (chữ hoa, chữ thường, số)"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Phải chứa ít nhất 1 chữ hoa, 1 chữ thường và 1 số
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Xác nhận lại mật khẩu mới *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Nhập lại mật khẩu mới vừa điền"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading || !newPassword || !confirmPassword}
+                  className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 rounded-lg text-sm transition shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isLoading ? 'Đang cập nhật...' : '💾 Lưu mật khẩu mới & Đăng nhập'}
+                </button>
+
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => switchMode('LOGIN')}
+                    className="text-xs text-slate-500 hover:text-slate-800 transition font-medium"
+                  >
+                    ← Quay lại Đăng nhập
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         )}
 
-        {/* Toggle between Login / Register */}
+        {/* Chuyển đổi giữa Đăng nhập / Đăng ký */}
         {mode !== 'FORGOT' && (
           <div className="mt-6 text-center">
             <button
@@ -571,12 +748,12 @@ export const LoginPage: React.FC = () => {
         )}
 
         {mode === 'FORGOT' && (
-          <div className="mt-6 text-center">
+          <div className="mt-4 text-center border-t border-slate-100 pt-3">
             <button
               onClick={() => switchMode('LOGIN')}
               className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition"
             >
-              ← Quay lại trang Đăng nhập
+              ← Quay lại màn hình Đăng nhập
             </button>
           </div>
         )}

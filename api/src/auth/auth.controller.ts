@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { VerifyOtpDto, ResendOtpDto } from './dto/verify-otp.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { VerifyResetOtpDto } from './dto/verify-reset-otp.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
@@ -56,11 +57,20 @@ export class AuthController {
     return this.authService.forgotPassword(dto);
   }
 
+  @Post('verify-reset-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Xác thực mã OTP đặt lại mật khẩu (Bước 2: kiểm tra OTP đúng)' })
+  @ApiResponse({ status: 200, description: 'Mã OTP chính xác, trả về resetToken tạm thời' })
+  @ApiResponse({ status: 400, description: 'Mã OTP không đúng hoặc đã hết hạn' })
+  verifyResetOtp(@Body() dto: VerifyResetOtpDto) {
+    return this.authService.verifyResetOtp(dto);
+  }
+
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Xác thực OTP và đặt mật khẩu mới' })
+  @ApiOperation({ summary: 'Đặt mật khẩu mới (Bước 3: cập nhật mật khẩu với resetToken hoặc OTP)' })
   @ApiResponse({ status: 200, description: 'Đổi mật khẩu thành công' })
-  @ApiResponse({ status: 400, description: 'Mã OTP không đúng hoặc đã hết hạn' })
+  @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ hoặc token hết hạn' })
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }

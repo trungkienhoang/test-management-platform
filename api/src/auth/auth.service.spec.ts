@@ -37,7 +37,10 @@ const mockPrisma = {
   },
 };
 
-const mockJwt = { sign: vi.fn(() => 'mock.access.token') };
+const mockJwt = {
+  sign: vi.fn(() => 'mock.access.token'),
+  verify: vi.fn(),
+};
 const mockConfig = { getOrThrow: vi.fn(() => 'mock-secret'), get: vi.fn(() => '7') };
 const mockMail = {
   sendOtpEmail: vi.fn().mockResolvedValue(true),
@@ -236,10 +239,108 @@ describe('AuthService', () => {
     });
   });
 
+  // ─── VERIFY RESET OTP ──────────────────────────────────────────────────────
+
+  describe('verifyResetOtp', () => {
+    it('xác thực OTP đúng, xóa bản ghi OTP và trả về resetToken', async () => {
+      const plainOtp = '123456';
+      const otpHash = crypto.createHash('sha256').update(plainOtp).digest('hex');
+
+      mockPrisma.passwordReset.findFirst.mockResolvedValue({
+        id: 'pr-1',
+        email: 'user@gmail.com',
+        otpHash,
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 100000),
+      });
+
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        email: 'user@gmail.com',
+      });
+      mockPrisma.passwordReset.deleteMany.mockResolvedValue({});
+
+      const result = await service.verifyResetOtp({
+        email: 'user@gmail.com',
+        otp: '123456',
+      });
+
+      expect(result.resetToken).toBeDefined();
+      expect(result.email).toBe('user@gmail.com');
+      expect(mockPrisma.passwordReset.deleteMany).toHaveBeenCalledOnce();
+      expect(mockJwt.sign).toHaveBeenCalled();
+    });
+
+    it('ném BadRequestException khi mã OTP sai', async () => {
+      const realOtp = '654321';
+      const otpHash = crypto.createHash('sha256').update(realOtp).digest('hex');
+
+      mockPrisma.passwordReset.findFirst.mockResolvedValue({
+        id: 'pr-1',
+        email: 'user@gmail.com',
+        otpHash,
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 100000),
+      });
+
+      await expect(
+        service.verifyResetOtp({ email: 'user@gmail.com', otp: '000000' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('ném BadRequestException khi mã OTP đã hết hạn', async () => {
+      mockPrisma.passwordReset.findFirst.mockResolvedValue({
+        id: 'pr-1',
+        email: 'user@gmail.com',
+        expiresAt: new Date(Date.now() - 1000),
+      });
+
+      await expect(
+        service.verifyResetOtp({ email: 'user@gmail.com', otp: '123456' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
   // ─── RESET PASSWORD ─────────────────────────────────────────────────────────
 
   describe('resetPassword', () => {
-    it('xác thực OTP đúng và cập nhật mật khẩu mới thành công', async () => {
+    it('cập nhật mật khẩu mới thành công khi truyền resetToken hợp lệ', async () => {
+      mockJwt.verify.mockReturnValue({
+        sub: 'u1',
+        email: 'user@gmail.com',
+        purpose: 'PASSWORD_RESET',
+      });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        email: 'user@gmail.com',
+      });
+      mockPrisma.user.update.mockResolvedValue({});
+      mockPrisma.refreshToken.updateMany.mockResolvedValue({});
+
+      const result = await service.resetPassword({
+        resetToken: 'valid.reset.token',
+        newPassword: 'NewPassword123!',
+      });
+
+      expect(result.message).toContain('thành công');
+      expect(mockPrisma.user.update).toHaveBeenCalledOnce();
+      expect(mockPrisma.refreshToken.updateMany).toHaveBeenCalledOnce();
+    });
+
+    it('ném BadRequestException khi resetToken không hợp lệ hoặc hết hạn', async () => {
+      mockJwt.verify.mockImplementation(() => {
+        throw new Error('jwt expired');
+      });
+
+      await expect(
+        service.resetPassword({
+          resetToken: 'expired.token',
+          newPassword: 'NewPassword123!',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('xác thực OTP đúng và cập nhật mật khẩu mới thành công (fallback email + otp)', async () => {
       const plainOtp = '654321';
       const otpHash = crypto.createHash('sha256').update(plainOtp).digest('hex');
 
@@ -270,7 +371,7 @@ describe('AuthService', () => {
       expect(mockPrisma.refreshToken.updateMany).toHaveBeenCalledOnce();
     });
 
-    it('ném BadRequestException khi OTP sai', async () => {
+    it('ném BadRequestException khi OTP sai trong fallback', async () => {
       const realOtp = '654321';
       const otpHash = crypto.createHash('sha256').update(realOtp).digest('hex');
 
