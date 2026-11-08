@@ -100,3 +100,21 @@ model ProjectMember {
   @@index([userId])
   @@map("project_members")
 }
+
+// ─────────────────────────────────────────
+// EMAIL VERIFICATION (OTP REGISTRATION)
+// ─────────────────────────────────────────
+
+model EmailVerification {
+  id           String   @id @default(cuid())
+  email        String
+  otpHash      String   @map("otp_hash")
+  fullName     String   @map("full_name")
+  passwordHash String   @map("password_hash")
+  attempts     Int      @default(0)
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("email_verifications")
+}

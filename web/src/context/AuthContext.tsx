@@ -7,6 +7,9 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, fullName: string, password: string) => Promise<void>;
+  sendRegisterOtp: (email: string, fullName: string, password: string) => Promise<{ message: string; email: string }>;
+  verifyRegisterOtp: (email: string, otp: string) => Promise<void>;
+  resendRegisterOtp: (email: string) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   updateUserData: (updated: Partial<User>) => void;
 }
@@ -54,8 +57,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (email: string, fullName: string, password: string) => {
     await apiClient.post('/auth/register', { email, fullName, password });
-    // After register, automatically log in
-    await login(email, password);
+  };
+
+  const sendRegisterOtp = async (email: string, fullName: string, password: string) => {
+    const res = await apiClient.post<{ message: string; email: string }>('/auth/register', {
+      email,
+      fullName,
+      password,
+    });
+    return res.data;
+  };
+
+  const verifyRegisterOtp = async (email: string, otp: string) => {
+    const res = await apiClient.post<AuthResponse>('/auth/verify-otp', { email, otp });
+    const { user: loggedInUser, accessToken, refreshToken } = res.data;
+
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('refreshToken', refreshToken);
+    localStorage.setItem('user', JSON.stringify(loggedInUser));
+    setUser(loggedInUser);
+  };
+
+  const resendRegisterOtp = async (email: string) => {
+    const res = await apiClient.post<{ message: string }>('/auth/resend-otp', { email });
+    return res.data;
   };
 
   const logout = async () => {
@@ -84,7 +109,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout, updateUserData }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        login,
+        register,
+        sendRegisterOtp,
+        verifyRegisterOtp,
+        resendRegisterOtp,
+        logout,
+        updateUserData,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -1,11 +1,17 @@
 import {
-  Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Req,
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
+import { VerifyOtpDto, ResendOtpDto } from './dto/verify-otp.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import type { JwtPayload } from './strategies/jwt.strategy.js';
@@ -16,11 +22,27 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Đăng ký tài khoản mới' })
-  @ApiResponse({ status: 201, description: 'Đăng ký thành công' })
+  @ApiOperation({ summary: 'Khởi tạo đăng ký tài khoản (Gửi mã OTP về email)' })
+  @ApiResponse({ status: 201, description: 'Đã gửi mã OTP về email' })
   @ApiResponse({ status: 409, description: 'Email đã tồn tại' })
   register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+    return this.authService.initiateRegister(dto);
+  }
+
+  @Post('verify-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Xác thực mã OTP và hoàn tất đăng ký' })
+  @ApiResponse({ status: 200, description: 'Đăng ký thành công, tự động đăng nhập' })
+  @ApiResponse({ status: 400, description: 'Mã OTP không đúng hoặc đã hết hạn' })
+  verifyOtp(@Body() dto: VerifyOtpDto) {
+    return this.authService.verifyOtpAndRegister(dto);
+  }
+
+  @Post('resend-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Gửi lại mã OTP qua email' })
+  resendOtp(@Body() dto: ResendOtpDto) {
+    return this.authService.resendOtp(dto);
   }
 
   @Post('login')

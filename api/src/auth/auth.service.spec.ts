@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthService } from './auth.service.js';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import * as crypto from 'crypto';
 
 // Mock PrismaService
 const mockPrisma = {
@@ -14,48 +15,118 @@ const mockPrisma = {
     update: vi.fn(),
     updateMany: vi.fn(),
   },
+  emailVerification: {
+    deleteMany: vi.fn(),
+    create: vi.fn(),
+    findFirst: vi.fn(),
+    delete: vi.fn(),
+    update: vi.fn(),
+  },
 };
 
 const mockJwt = { sign: vi.fn(() => 'mock.access.token') };
 const mockConfig = { getOrThrow: vi.fn(() => 'mock-secret'), get: vi.fn(() => '7') };
+const mockMail = { sendOtpEmail: vi.fn().mockResolvedValue(true) };
 
 describe('AuthService', () => {
   let service: AuthService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new AuthService(mockPrisma as any, mockJwt as any, mockConfig as any);
+    service = new AuthService(mockPrisma as any, mockJwt as any, mockConfig as any, mockMail as any);
   });
 
-  // ─── REGISTER ───────────────────────────────────────────────────────────────
+  // ─── REGISTER (INITIATE OTP) ───────────────────────────────────────────────
 
-  describe('register', () => {
-    it('tạo user mới thành công', async () => {
+  describe('initiateRegister', () => {
+    it('gửi OTP và tạo bản ghi emailVerification thành công', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
-      mockPrisma.user.create.mockResolvedValue({
-        id: 'user-1',
-        email: 'test@test.com',
-        fullName: 'Test User',
-        systemRole: 'USER',
-        createdAt: new Date(),
-      });
+      mockPrisma.emailVerification.deleteMany.mockResolvedValue({});
+      mockPrisma.emailVerification.create.mockResolvedValue({});
 
-      const result = await service.register({
-        email: 'test@test.com',
+      const result = await service.initiateRegister({
+        email: 'test@gmail.com',
         fullName: 'Test User',
         password: 'Password123!',
       });
 
-      expect(result.email).toBe('test@test.com');
-      expect(mockPrisma.user.create).toHaveBeenCalledOnce();
+      expect(result.email).toBe('test@gmail.com');
+      expect(mockMail.sendOtpEmail).toHaveBeenCalledOnce();
+      expect(mockPrisma.emailVerification.create).toHaveBeenCalledOnce();
     });
 
     it('ném ConflictException khi email đã tồn tại', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'existing' });
 
       await expect(
-        service.register({ email: 'dup@test.com', fullName: 'X', password: 'Password123!' }),
+        service.initiateRegister({ email: 'dup@gmail.com', fullName: 'X', password: 'Password123!' }),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  // ─── VERIFY OTP ─────────────────────────────────────────────────────────────
+
+  describe('verifyOtpAndRegister', () => {
+    it('xác thực OTP đúng và hoàn tất tạo tài khoản', async () => {
+      const plainOtp = '123456';
+      const otpHash = crypto.createHash('sha256').update(plainOtp).digest('hex');
+
+      mockPrisma.emailVerification.findFirst.mockResolvedValue({
+        id: 'ev-1',
+        email: 'test@gmail.com',
+        fullName: 'Test User',
+        passwordHash: 'hashed_pwd',
+        otpHash,
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 100000),
+      });
+
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue({
+        id: 'u-new',
+        email: 'test@gmail.com',
+        fullName: 'Test User',
+        systemRole: 'USER',
+      });
+      mockPrisma.refreshToken.create.mockResolvedValue({});
+
+      const result = await service.verifyOtpAndRegister({
+        email: 'test@gmail.com',
+        otp: '123456',
+      });
+
+      expect(result.user.email).toBe('test@gmail.com');
+      expect(result.accessToken).toBe('mock.access.token');
+      expect(mockPrisma.user.create).toHaveBeenCalledOnce();
+    });
+
+    it('ném BadRequestException khi mã OTP sai', async () => {
+      const realOtp = '654321';
+      const otpHash = crypto.createHash('sha256').update(realOtp).digest('hex');
+
+      mockPrisma.emailVerification.findFirst.mockResolvedValue({
+        id: 'ev-1',
+        email: 'test@gmail.com',
+        otpHash,
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 100000),
+      });
+
+      await expect(
+        service.verifyOtpAndRegister({ email: 'test@gmail.com', otp: '000000' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('ném BadRequestException khi mã OTP đã hết hạn', async () => {
+      mockPrisma.emailVerification.findFirst.mockResolvedValue({
+        id: 'ev-1',
+        email: 'test@gmail.com',
+        expiresAt: new Date(Date.now() - 1000), // expired
+      });
+
+      await expect(
+        service.verifyOtpAndRegister({ email: 'test@gmail.com', otp: '123456' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
