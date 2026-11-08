@@ -62,12 +62,16 @@ export class AuthService {
     });
 
     // Gửi email chứa OTP
-    await this.mailService.sendOtpEmail(email, rawOtp, dto.fullName.trim());
+    const sent = await this.mailService.sendOtpEmail(email, rawOtp, dto.fullName.trim());
+    const isConfigured = this.mailService.isConfigured();
 
     return {
-      message: `Mã xác thực OTP gồm 6 chữ số đã được gửi tới ${email}. Vui lòng kiểm tra hộp thư của bạn.`,
+      message: isConfigured && sent
+        ? `Mã xác thực OTP gồm 6 chữ số đã được gửi tới hộp thư Gmail ${email}. Vui lòng kiểm tra hộp thư của bạn.`
+        : `[DEV - Chưa cấu hình Gmail trong .env] Mã OTP của bạn là: ${rawOtp}. Hãy nhập mã này để hoàn tất đăng ký!`,
       email,
       expiresInSeconds: 300,
+      devOtp: isConfigured ? undefined : rawOtp,
     };
   }
 
@@ -183,12 +187,16 @@ export class AuthService {
       },
     });
 
-    await this.mailService.sendOtpEmail(email, rawOtp, record.fullName);
+    const sent = await this.mailService.sendOtpEmail(email, rawOtp, record.fullName);
+    const isConfigured = this.mailService.isConfigured();
 
     return {
-      message: `Đã gửi lại mã OTP mới tới ${email}. Vui lòng kiểm tra hộp thư.`,
+      message: isConfigured && sent
+        ? `Đã gửi lại mã OTP mới tới hộp thư Gmail ${email}. Vui lòng kiểm tra hộp thư.`
+        : `[DEV - Chưa cấu hình Gmail trong .env] Mã OTP mới của bạn là: ${rawOtp}`,
       email,
       expiresInSeconds: 300,
+      devOtp: isConfigured ? undefined : rawOtp,
     };
   }
 

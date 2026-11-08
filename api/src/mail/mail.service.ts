@@ -35,6 +35,10 @@ export class MailService {
     }
   }
 
+  isConfigured(): boolean {
+    return this.transporter !== null;
+  }
+
   async sendOtpEmail(toEmail: string, otp: string, fullName: string): Promise<boolean> {
     const from =
       this.config.get<string>('SMTP_FROM') ||

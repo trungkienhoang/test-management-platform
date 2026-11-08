@@ -26,7 +26,10 @@ const mockPrisma = {
 
 const mockJwt = { sign: vi.fn(() => 'mock.access.token') };
 const mockConfig = { getOrThrow: vi.fn(() => 'mock-secret'), get: vi.fn(() => '7') };
-const mockMail = { sendOtpEmail: vi.fn().mockResolvedValue(true) };
+const mockMail = {
+  sendOtpEmail: vi.fn().mockResolvedValue(true),
+  isConfigured: vi.fn().mockReturnValue(true),
+};
 
 describe('AuthService', () => {
   let service: AuthService;

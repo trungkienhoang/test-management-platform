@@ -7,9 +7,9 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, fullName: string, password: string) => Promise<void>;
-  sendRegisterOtp: (email: string, fullName: string, password: string) => Promise<{ message: string; email: string }>;
+  sendRegisterOtp: (email: string, fullName: string, password: string) => Promise<{ message: string; email: string; devOtp?: string }>;
   verifyRegisterOtp: (email: string, otp: string) => Promise<void>;
-  resendRegisterOtp: (email: string) => Promise<{ message: string }>;
+  resendRegisterOtp: (email: string) => Promise<{ message: string; devOtp?: string }>;
   logout: () => Promise<void>;
   updateUserData: (updated: Partial<User>) => void;
 }

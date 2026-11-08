@@ -44,6 +44,9 @@ export const LoginPage: React.FC = () => {
           // Gửi OTP
           const res = await sendRegisterOtp(email, fullName, password);
           setInfoMessage(res.message);
+          if (res.devOtp) {
+            setOtp(res.devOtp);
+          }
           setRegisterStep('OTP');
           setCountdown(60); // 60s cooldown
         } else {
@@ -85,6 +88,9 @@ export const LoginPage: React.FC = () => {
     try {
       const res = await resendRegisterOtp(email);
       setInfoMessage(res.message);
+      if (res.devOtp) {
+        setOtp(res.devOtp);
+      }
       setCountdown(60);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Không thể gửi lại mã OTP');
