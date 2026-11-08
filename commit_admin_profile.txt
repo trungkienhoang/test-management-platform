@@ -1,0 +1,20 @@
+feat: add admin user management, project member search autocomplete, and user profile password editing
+
+1. System Admin User Management:
+   - Dedicated table view for system users at /users
+   - Filter by role (ADMIN/USER), status (Active/Inactive), search by name or email, pagination
+   - Create user modal with validation
+   - Edit user modal (name, role, status)
+   - Lock/Unlock toggle and delete account with self-deletion protection
+   - Sidebar navigation item "Quản lý User" visible only to System Admin
+
+2. Project Member Search Autocomplete:
+   - Live search by name or email when adding members in ProjectDetailPage
+   - Backend endpoint GET /users/search with exclusion of existing project members
+   - Visual user selection card with role assignment (QA Lead, Tester, Developer, Viewer)
+
+3. User Profile & Change Password:
+   - Profile management page at /profile
+   - Update full name with instant UI sync
+   - Change password tab with current password verification, bcrypt hashing, and validation
+   - Sidebar footer user link and quick settings button

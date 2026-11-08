@@ -2,14 +2,15 @@ import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
-import type { Project, ProjectMember, ProjectRole } from '../types';
+import type { Project, ProjectMember, ProjectRole, User } from '../types';
 
 export const ProjectDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [memberUserId, setMemberUserId] = useState('');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [memberRole, setMemberRole] = useState<ProjectRole>('TESTER');
   const [modalError, setModalError] = useState<string | null>(null);
 
@@ -33,6 +34,18 @@ export const ProjectDetailPage: React.FC = () => {
     enabled: !!id,
   });
 
+  // Search candidate users for adding to project (excludes current members)
+  const { data: candidateUsers, isLoading: isSearchingUsers } = useQuery({
+    queryKey: ['candidate-users', id, userSearchQuery],
+    queryFn: async () => {
+      const res = await apiClient.get<User[]>('/users/search', {
+        params: { q: userSearchQuery, projectId: id },
+      });
+      return res.data;
+    },
+    enabled: isAddModalOpen && !selectedUser,
+  });
+
   // Add member mutation
   const addMemberMutation = useMutation({
     mutationFn: async (payload: { userId: string; role: ProjectRole }) => {
@@ -42,7 +55,8 @@ export const ProjectDetailPage: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-members', id] });
       setIsAddModalOpen(false);
-      setMemberUserId('');
+      setSelectedUser(null);
+      setUserSearchQuery('');
       setMemberRole('TESTER');
       setModalError(null);
     },
@@ -105,7 +119,12 @@ export const ProjectDetailPage: React.FC = () => {
 
           <div className="flex gap-2">
             <button
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={() => {
+                setIsAddModalOpen(true);
+                setSelectedUser(null);
+                setUserSearchQuery('');
+                setModalError(null);
+              }}
               className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5"
             >
               <span>👤➕</span> Thêm thành viên
@@ -197,13 +216,13 @@ export const ProjectDetailPage: React.FC = () => {
         )}
       </div>
 
-      {/* Add Member Modal */}
+      {/* Add Member Modal (with Search Autocomplete / Dropdown) */}
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-slate-900 mb-2">Thêm Thành Viên Vào Dự Án</h3>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Thêm Thành Viên Vào Dự Án</h3>
             <p className="text-xs text-slate-500 mb-4">
-              Nhập mã User ID của người dùng để cấp quyền trong dự án này.
+              Tìm kiếm theo tên hoặc email để chỉ định quyền cho thành viên.
             </p>
 
             {modalError && (
@@ -215,22 +234,93 @@ export const ProjectDetailPage: React.FC = () => {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                addMemberMutation.mutate({ userId: memberUserId, role: memberRole });
+                if (!selectedUser) {
+                  setModalError('Vui lòng chọn một người dùng từ danh sách tìm kiếm');
+                  return;
+                }
+                addMemberMutation.mutate({ userId: selectedUser.id, role: memberRole });
               }}
               className="space-y-4"
             >
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  User ID *
+                  Chọn người dùng *
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={memberUserId}
-                  onChange={(e) => setMemberUserId(e.target.value)}
-                  placeholder="Nhập User ID (CUID)"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+
+                {selectedUser ? (
+                  /* Selected user card */
+                  <div className="flex items-center justify-between p-3 rounded-xl border border-indigo-200 bg-indigo-50/50">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
+                        {selectedUser.fullName.charAt(0)}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-800">{selectedUser.fullName}</div>
+                        <div className="text-[11px] text-slate-500 font-mono">{selectedUser.email}</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUser(null)}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold px-2 py-1 rounded hover:bg-indigo-100 transition"
+                    >
+                      Đổi người khác
+                    </button>
+                  </div>
+                ) : (
+                  /* Autocomplete search input & list */
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={userSearchQuery}
+                        onChange={(e) => setUserSearchQuery(e.target.value)}
+                        placeholder="Gõ tên hoặc email người dùng..."
+                        className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="absolute left-3 top-2.5 text-slate-400">🔍</span>
+                    </div>
+
+                    {/* Candidate dropdown options */}
+                    <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white shadow-xs">
+                      {isSearchingUsers ? (
+                        <div className="p-3 text-center text-xs text-slate-400">Đang tìm kiếm...</div>
+                      ) : !candidateUsers || candidateUsers.length === 0 ? (
+                        <div className="p-3 text-center text-xs text-slate-400">
+                          {userSearchQuery
+                            ? 'Không tìm thấy người dùng nào phù hợp (hoặc đã là thành viên dự án)'
+                            : 'Không còn người dùng nào để thêm'}
+                        </div>
+                      ) : (
+                        candidateUsers.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedUser(u);
+                              setModalError(null);
+                            }}
+                            className="w-full text-left p-2.5 hover:bg-indigo-50/70 transition flex items-center justify-between gap-2"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                {u.fullName.charAt(0)}
+                              </div>
+                              <div className="overflow-hidden">
+                                <div className="text-xs font-semibold text-slate-800 truncate">{u.fullName}</div>
+                                <div className="text-[10px] text-slate-500 truncate font-mono">{u.email}</div>
+                              </div>
+                            </div>
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-medium border border-slate-200 shrink-0">
+                              {u.systemRole}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -259,10 +349,10 @@ export const ProjectDetailPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={addMemberMutation.isPending}
+                  disabled={addMemberMutation.isPending || !selectedUser}
                   className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition shadow-sm disabled:opacity-50"
                 >
-                  {addMemberMutation.isPending ? 'Đang thêm...' : 'Thêm thành viên'}
+                  {addMemberMutation.isPending ? 'Đang thêm...' : 'Thêm vào dự án'}
                 </button>
               </div>
             </form>

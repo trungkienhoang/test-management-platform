@@ -6,6 +6,8 @@ import { MainLayout } from './components/layout/MainLayout';
 import { LoginPage } from './pages/LoginPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
+import { UsersManagementPage } from './pages/UsersManagementPage';
+import { ProfilePage } from './pages/ProfilePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,6 +39,16 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+
+  if (user?.systemRole !== 'ADMIN') {
+    return <Navigate to="/projects" replace />;
+  }
+
+  return <>{children}</>;
+};
+
 export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
@@ -58,6 +70,19 @@ export const App: React.FC = () => {
               <Route index element={<Navigate to="/projects" replace />} />
               <Route path="projects" element={<ProjectsPage />} />
               <Route path="projects/:id" element={<ProjectDetailPage />} />
+              <Route path="profile" element={<ProfilePage />} />
+
+              {/* Admin-only system user management */}
+              <Route
+                path="users"
+                element={
+                  <AdminRoute>
+                    <UsersManagementPage />
+                  </AdminRoute>
+                }
+              />
+
+              {/* Placeholder routes for upcoming sprints */}
               <Route
                 path="test-suites"
                 element={
