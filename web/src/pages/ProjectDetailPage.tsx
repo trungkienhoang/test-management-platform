@@ -1,18 +1,31 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
-import type { Project, ProjectMember, ProjectRole, User } from '../types';
+import { useAuth } from '../context/AuthContext';
+import type { Project, ProjectMember, ProjectRole, ProjectStatus, User } from '../types';
 
 export const ProjectDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
+  // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+
+  // Add Member state
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [memberRole, setMemberRole] = useState<ProjectRole>('TESTER');
   const [modalError, setModalError] = useState<string | null>(null);
+
+  // Edit Project Settings state
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editStatus, setEditStatus] = useState<ProjectStatus>('ACTIVE');
+  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   // Fetch Project details
   const { data: project, isLoading: isProjectLoading } = useQuery({
@@ -34,6 +47,11 @@ export const ProjectDetailPage: React.FC = () => {
     enabled: !!id,
   });
 
+  // Permissions check
+  const currentUserMember = members?.find((m) => m.userId === user?.id);
+  const canManageProject = user?.systemRole === 'ADMIN' || currentUserMember?.role === 'QA_LEAD';
+  const canDeleteProject = user?.systemRole === 'ADMIN' || project?.createdById === user?.id;
+
   // Search candidate users for adding to project (excludes current members)
   const { data: candidateUsers, isLoading: isSearchingUsers } = useQuery({
     queryKey: ['candidate-users', id, userSearchQuery],
@@ -44,6 +62,37 @@ export const ProjectDetailPage: React.FC = () => {
       return res.data;
     },
     enabled: isAddModalOpen && !selectedUser,
+  });
+
+  // Update Project Settings mutation (Name, Description, Status)
+  const updateProjectMutation = useMutation({
+    mutationFn: async (payload: { name?: string; description?: string; status?: ProjectStatus }) => {
+      const res = await apiClient.patch<Project>(`/projects/${id}`, payload);
+      return res.data;
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['project', id], updated);
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setIsSettingsModalOpen(false);
+      setSettingsError(null);
+    },
+    onError: (err: any) => {
+      setSettingsError(err.response?.data?.message || 'Không thể cập nhật dự án');
+    },
+  });
+
+  // Delete Project mutation
+  const deleteProjectMutation = useMutation({
+    mutationFn: async () => {
+      await apiClient.delete(`/projects/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      navigate('/projects');
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.message || 'Không thể xóa dự án');
+    },
   });
 
   // Add member mutation
@@ -85,6 +134,24 @@ export const ProjectDetailPage: React.FC = () => {
     },
   });
 
+  const handleOpenSettings = () => {
+    if (!project) return;
+    setEditName(project.name);
+    setEditDescription(project.description || '');
+    setEditStatus(project.status);
+    setSettingsError(null);
+    setIsSettingsModalOpen(true);
+  };
+
+  const handleQuickToggleStatus = () => {
+    if (!project) return;
+    const nextStatus: ProjectStatus = project.status === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE';
+    const actionName = nextStatus === 'ARCHIVED' ? 'LƯU TRỮ' : 'KÍCH HOẠT LẠI (ACTIVE)';
+    if (confirm(`Bạn có chắc muốn chuyển trạng thái dự án sang "${actionName}"?`)) {
+      updateProjectMutation.mutate({ status: nextStatus });
+    }
+  };
+
   if (isProjectLoading) {
     return <div className="text-center py-16 text-slate-400">⏳ Đang tải thông tin dự án...</div>;
   }
@@ -93,8 +160,10 @@ export const ProjectDetailPage: React.FC = () => {
     return <div className="text-center py-16 text-rose-500">❌ Dự án không tồn tại hoặc bạn không có quyền xem.</div>;
   }
 
+  const isArchived = project.status === 'ARCHIVED';
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Breadcrumb & Navigation */}
       <div>
         <Link to="/projects" className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 mb-2">
@@ -102,22 +171,49 @@ export const ProjectDetailPage: React.FC = () => {
         </Link>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h2 className="text-2xl font-bold text-slate-900">{project.name}</h2>
               <span
-                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 ${
                   project.status === 'ACTIVE'
                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                    : 'bg-slate-100 text-slate-600'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200'
                 }`}
               >
-                {project.status}
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    project.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`}
+                />
+                {project.status === 'ACTIVE' ? 'ACTIVE (Hoạt động)' : 'ARCHIVED (Lưu trữ)'}
               </span>
+
+              {/* Quick Status Toggle Button for QA Lead / Admin */}
+              {canManageProject && (
+                <button
+                  onClick={handleQuickToggleStatus}
+                  disabled={updateProjectMutation.isPending}
+                  className="text-xs text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-300 px-2.5 py-1 rounded-md transition flex items-center gap-1 shadow-2xs"
+                  title={isArchived ? 'Bấm để kích hoạt lại dự án' : 'Bấm để chuyển sang lưu trữ'}
+                >
+                  <span>{isArchived ? '⚡' : '📦'}</span>
+                  <span>{isArchived ? 'Kích hoạt lại (Active)' : 'Lưu trữ (Archive)'}</span>
+                </button>
+              )}
             </div>
             <p className="text-sm text-slate-500 mt-1 max-w-2xl">{project.description || 'Chưa có mô tả'}</p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {canManageProject && (
+              <button
+                onClick={handleOpenSettings}
+                className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold px-3 py-2 rounded-lg shadow-2xs transition flex items-center gap-1.5"
+              >
+                <span>⚙️</span> Cài đặt dự án
+              </button>
+            )}
+
             <button
               onClick={() => {
                 setIsAddModalOpen(true);
@@ -125,13 +221,45 @@ export const ProjectDetailPage: React.FC = () => {
                 setUserSearchQuery('');
                 setModalError(null);
               }}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5"
+              disabled={isArchived}
+              className={`text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5 ${
+                isArchived
+                  ? 'bg-slate-400 cursor-not-allowed'
+                  : 'bg-indigo-600 hover:bg-indigo-700'
+              }`}
+              title={isArchived ? 'Không thể thêm thành viên vào dự án đã lưu trữ' : 'Thêm thành viên'}
             >
               <span>👤➕</span> Thêm thành viên
             </button>
           </div>
         </div>
       </div>
+
+      {/* Alert Banner if Archived */}
+      {isArchived && (
+        <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📦</span>
+            <div>
+              <h4 className="text-sm font-bold text-amber-900">
+                Dự án này đang ở trạng thái LƯU TRỮ (Archived)
+              </h4>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Dữ liệu kiểm thử đã được đóng băng để lưu trữ đối soát. Để tạo thêm bài test hoặc chạy test run, hãy kích hoạt lại dự án.
+              </p>
+            </div>
+          </div>
+          {canManageProject && (
+            <button
+              onClick={() => updateProjectMutation.mutate({ status: 'ACTIVE' })}
+              disabled={updateProjectMutation.isPending}
+              className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-sm transition shrink-0"
+            >
+              ⚡ Kích hoạt lại dự án (Active)
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Sprint Roadmap Tabs for this Project */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -184,6 +312,7 @@ export const ProjectDetailPage: React.FC = () => {
 
                 <div className="flex items-center gap-3">
                   <select
+                    disabled={!canManageProject || isArchived}
                     value={member.role}
                     onChange={(e) =>
                       updateRoleMutation.mutate({
@@ -191,7 +320,7 @@ export const ProjectDetailPage: React.FC = () => {
                         role: e.target.value as ProjectRole,
                       })
                     }
-                    className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400"
                   >
                     <option value="QA_LEAD">QA Lead</option>
                     <option value="TESTER">Tester</option>
@@ -199,22 +328,171 @@ export const ProjectDetailPage: React.FC = () => {
                     <option value="VIEWER">Viewer</option>
                   </select>
 
-                  <button
-                    onClick={() => {
-                      if (confirm(`Bạn có chắc muốn xóa ${member.user.fullName} khỏi dự án?`)) {
-                        removeMemberMutation.mutate(member.userId);
-                      }
-                    }}
-                    className="text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 px-2 py-1.5 rounded transition"
-                  >
-                    Xóa
-                  </button>
+                  {canManageProject && (
+                    <button
+                      disabled={isArchived}
+                      onClick={() => {
+                        if (confirm(`Bạn có chắc muốn xóa ${member.user.fullName} khỏi dự án?`)) {
+                          removeMemberMutation.mutate(member.userId);
+                        }
+                      }}
+                      className="text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 px-2 py-1.5 rounded transition disabled:opacity-40 disabled:hover:bg-transparent"
+                    >
+                      Xóa
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Modal Cài Đặt Dự Án (Edit Name, Description, Status, Delete) */}
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Cài Đặt Dự Án</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Chỉnh sửa thông tin và quản lý vòng đời trạng thái hoạt động của dự án.
+              </p>
+            </div>
+
+            {settingsError && (
+              <div className="p-2.5 bg-rose-50 border-l-4 border-rose-500 text-rose-700 text-xs rounded">
+                {settingsError}
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                updateProjectMutation.mutate({
+                  name: editName,
+                  description: editDescription,
+                  status: editStatus,
+                });
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Tên dự án *</label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Mô tả dự án</label>
+                <textarea
+                  rows={3}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Status Radio Picker */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-2">Trạng thái dự án *</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label
+                    className={`p-3 rounded-xl border cursor-pointer transition flex flex-col gap-1 ${
+                      editStatus === 'ACTIVE'
+                        ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-400/20'
+                        : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="status"
+                        value="ACTIVE"
+                        checked={editStatus === 'ACTIVE'}
+                        onChange={() => setEditStatus('ACTIVE')}
+                        className="text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span className="text-xs font-bold text-emerald-800">🟢 ACTIVE</span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 pl-5">
+                      Đang hoạt động. Cho phép thêm test case, chạy test và ghi nhận bug.
+                    </span>
+                  </label>
+
+                  <label
+                    className={`p-3 rounded-xl border cursor-pointer transition flex flex-col gap-1 ${
+                      editStatus === 'ARCHIVED'
+                        ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-400/20'
+                        : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="status"
+                        value="ARCHIVED"
+                        checked={editStatus === 'ARCHIVED'}
+                        onChange={() => setEditStatus('ARCHIVED')}
+                        className="text-amber-600 focus:ring-amber-500"
+                      />
+                      <span className="text-xs font-bold text-amber-800">📦 ARCHIVED</span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 pl-5">
+                      Lưu trữ. Đóng băng dữ liệu ở chế độ chỉ đọc.
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateProjectMutation.isPending}
+                  className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition shadow-sm disabled:opacity-50"
+                >
+                  {updateProjectMutation.isPending ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+              </div>
+            </form>
+
+            {/* Danger Zone: Delete Project */}
+            {canDeleteProject && (
+              <div className="pt-4 border-t border-slate-200 mt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h5 className="text-xs font-bold text-rose-600">Vùng nguy hiểm: Xóa dự án</h5>
+                    <p className="text-[11px] text-slate-400">Xóa vĩnh viễn dự án và toàn bộ dữ liệu kiểm thử.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`CẢNH BÁO: Bạn có chắc chắn muốn XÓA VĨNH VIỄN dự án "${project.name}" không?`)) {
+                        deleteProjectMutation.mutate();
+                      }
+                    }}
+                    disabled={deleteProjectMutation.isPending}
+                    className="text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 px-3 py-1.5 rounded-lg transition"
+                  >
+                    Xóa dự án
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Add Member Modal (with Search Autocomplete / Dropdown) */}
       {isAddModalOpen && (

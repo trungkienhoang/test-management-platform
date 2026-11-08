@@ -117,7 +117,11 @@ export const ProjectsPage: React.FC = () => {
             <Link
               key={project.id}
               to={`/projects/${project.id}`}
-              className="bg-white rounded-xl p-6 border border-slate-200 hover:border-indigo-400 hover:shadow-md transition flex flex-col justify-between group"
+              className={`bg-white rounded-xl p-6 border transition flex flex-col justify-between group ${
+                project.status === 'ARCHIVED'
+                  ? 'border-amber-200/80 bg-slate-50/50 hover:border-amber-400'
+                  : 'border-slate-200 hover:border-indigo-400 hover:shadow-md'
+              }`}
             >
               <div>
                 <div className="flex items-start justify-between gap-2 mb-2">
@@ -125,13 +129,18 @@ export const ProjectsPage: React.FC = () => {
                     {project.name}
                   </h3>
                   <span
-                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 flex items-center gap-1 ${
                       project.status === 'ACTIVE'
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                        : 'bg-amber-50 text-amber-700 border border-amber-200'
                     }`}
                   >
-                    {project.status}
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        project.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-amber-500'
+                      }`}
+                    />
+                    {project.status === 'ACTIVE' ? 'ACTIVE' : 'ARCHIVED'}
                   </span>
                 </div>
 
