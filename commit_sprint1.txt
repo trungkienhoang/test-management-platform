@@ -1,0 +1,19 @@
+feat(sprint-1): implement backend auth, rbac, projects and frontend foundation
+
+- Backend (NestJS 12 + Prisma 6 + PostgreSQL):
+  - JWT Authentication (Access + Refresh Token rotation, bcrypt)
+  - RBAC: System roles (Admin/User) & Project roles (QA Lead, Tester, Dev, Viewer)
+  - Projects CRUD & Project Members management
+  - Comprehensive unit test suite with 11 tests passing (Vitest)
+  - Swagger OpenAPI docs at /api/docs
+  - Prisma schema, initial migration, and database seeder with 4 demo accounts
+- Frontend (React 19 + TypeScript + Vite 8 + Tailwind CSS v4):
+  - Axios API client with automatic token refresh on 401
+  - AuthContext & useAuth hook for stateful auth management
+  - MainLayout with responsive sidebar and navigation
+  - LoginPage with login/register and quick demo login shortcuts
+  - ProjectsPage with search, filter, and Create Project modal
+  - ProjectDetailPage with members management and role updates
+- Documentation:
+  - System Requirements Specification (docs/requirements.md)
+  - 28 User Stories with priority levels (docs/user-stories.md)
