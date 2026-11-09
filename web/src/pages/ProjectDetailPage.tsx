@@ -78,6 +78,24 @@ export const ProjectDetailPage: React.FC = () => {
     enabled: !!id,
   });
 
+  const { data: testRunsData } = useQuery({
+    queryKey: ['test-runs-count', id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/projects/${id}/test-runs?limit=1`);
+      return res.data;
+    },
+    enabled: !!id,
+  });
+
+  const { data: bugsSummaryData } = useQuery({
+    queryKey: ['bugs-summary', id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/projects/${id}/bugs/summary`);
+      return res.data;
+    },
+    enabled: !!id,
+  });
+
   // Helper to count suites recursively
   const countSuitesRecursive = (nodes: TestSuiteTreeNode[]): number => {
     if (!Array.isArray(nodes)) return 0;
@@ -334,22 +352,32 @@ export const ProjectDetailPage: React.FC = () => {
             Xem danh sách & soạn thảo →
           </div>
         </Link>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 opacity-75">
-          <div className="text-xs text-slate-400 uppercase font-semibold flex items-center justify-between">
+        <Link
+          to={`/projects/${id}/test-runs`}
+          className="bg-white p-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-xs transition group block"
+        >
+          <div className="text-xs text-slate-400 group-hover:text-indigo-600 uppercase font-semibold flex items-center justify-between">
             <span>Test Runs</span>
             <span className="text-sm">▶️</span>
           </div>
-          <div className="text-2xl font-bold text-slate-800 mt-1">0</div>
-          <div className="text-[11px] text-slate-400 mt-1">Sắp ra mắt (Sprint 3)</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 opacity-75">
-          <div className="text-xs text-slate-400 uppercase font-semibold flex items-center justify-between">
+          <div className="text-2xl font-bold text-slate-800 mt-1">{testRunsData?.total ?? 0}</div>
+          <div className="text-[11px] text-indigo-600 mt-1 font-medium flex items-center gap-1">
+            Đợt kiểm thử & Runner →
+          </div>
+        </Link>
+        <Link
+          to={`/projects/${id}/bugs`}
+          className="bg-white p-4 rounded-xl border border-slate-200 hover:border-rose-300 hover:shadow-xs transition group block"
+        >
+          <div className="text-xs text-slate-400 group-hover:text-rose-600 uppercase font-semibold flex items-center justify-between">
             <span>Bugs ghi nhận</span>
             <span className="text-sm">🐞</span>
           </div>
-          <div className="text-2xl font-bold text-slate-800 mt-1">0</div>
-          <div className="text-[11px] text-slate-400 mt-1">Sắp ra mắt (Sprint 3)</div>
-        </div>
+          <div className="text-2xl font-bold text-slate-800 mt-1">{bugsSummaryData?.total ?? 0}</div>
+          <div className="text-[11px] text-rose-600 mt-1 font-medium flex items-center gap-1">
+            Quản lý lỗi & xử lý →
+          </div>
+        </Link>
       </div>
 
       {/* Members Section */}

@@ -9,6 +9,9 @@ import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { UsersManagementPage } from './pages/UsersManagementPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { TestRepositoryPage } from './pages/TestRepositoryPage';
+import { TestRunsPage } from './pages/TestRunsPage';
+import { TestRunnerPage } from './pages/TestRunnerPage';
+import { BugsPage } from './pages/BugsPage';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 const queryClient = new QueryClient({
@@ -87,26 +90,12 @@ export const App: React.FC = () => {
                   </AdminRoute>
                 }
               />
-              <Route
-                path="test-runs"
-                element={
-                  <div className="bg-white p-8 rounded-xl border border-slate-200 text-center">
-                    <span className="text-3xl">▶️</span>
-                    <h3 className="font-bold text-slate-800 mt-2">Quản lý Test Runs (Sprint 3)</h3>
-                    <p className="text-xs text-slate-500 mt-1">Sẽ được phát triển trong Sprint 3: 04/01 - 17/01</p>
-                  </div>
-                }
-              />
-              <Route
-                path="bugs"
-                element={
-                  <div className="bg-white p-8 rounded-xl border border-slate-200 text-center">
-                    <span className="text-3xl">🐛</span>
-                    <h3 className="font-bold text-slate-800 mt-2">Quản lý Bugs (Sprint 3)</h3>
-                    <p className="text-xs text-slate-500 mt-1">Sẽ được phát triển trong Sprint 3: 04/01 - 17/01</p>
-                  </div>
-                }
-              />
+              <Route path="projects/:id/test-runs" element={<TestRunsPage />} />
+              <Route path="projects/:id/test-runs/:runId/runner" element={<TestRunnerPage />} />
+              <Route path="test-runs" element={<TestRunsPage />} />
+
+              <Route path="projects/:id/bugs" element={<BugsPage />} />
+              <Route path="bugs" element={<BugsPage />} />
               <Route
                 path="dashboard"
                 element={

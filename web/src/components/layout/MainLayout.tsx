@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { NotificationBell } from '../notifications/NotificationBell';
 
 export const MainLayout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -14,8 +15,8 @@ export const MainLayout: React.FC = () => {
   const projectNavItems = [
     { name: 'Dự án (Projects)', path: '/projects', icon: '📁' },
     { name: 'Kho Test Suites & Cases', path: '/test-suites', icon: '📑' },
-    { name: 'Test Runs', path: '/test-runs', icon: '▶️', badge: 'Sprint 3' },
-    { name: 'Quản lý Bug', path: '/bugs', icon: '🐛', badge: 'Sprint 3' },
+    { name: 'Test Runs', path: '/test-runs', icon: '▶️' },
+    { name: 'Quản lý Bug', path: '/bugs', icon: '🐛' },
     { name: 'Dashboard', path: '/dashboard', icon: '📊', badge: 'Sprint 4' },
   ];
 
@@ -29,7 +30,7 @@ export const MainLayout: React.FC = () => {
             <span className="text-2xl">🧪</span>
             <div>
               <h1 className="font-bold text-sm tracking-wide text-white">Test Platform</h1>
-              <p className="text-xs text-emerald-400">v1.2 · Sprint 2</p>
+              <p className="text-xs text-emerald-400">v1.3 · Sprint 3</p>
             </div>
           </div>
 
@@ -144,6 +145,7 @@ export const MainLayout: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
+            <NotificationBell />
             <a
               href="http://localhost:3001/api/docs"
               target="_blank"
