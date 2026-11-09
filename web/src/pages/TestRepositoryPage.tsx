@@ -35,6 +35,7 @@ export const TestRepositoryPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [tagFilter, setTagFilter] = useState<string>('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Modals state
   const [isCaseModalOpen, setIsCaseModalOpen] = useState(false);
@@ -112,11 +113,12 @@ export const TestRepositoryPage: React.FC = () => {
       statusFilter,
       tagFilter,
       page,
+      pageSize,
     ],
     queryFn: async () => {
       const params: any = {
         page,
-        limit: 15,
+        limit: pageSize,
         search: search.trim() || undefined,
         suiteId: selectedSuiteId || undefined,
         priority: priorityFilter !== 'ALL' ? priorityFilter : undefined,
@@ -551,29 +553,114 @@ export const TestRepositoryPage: React.FC = () => {
           </div>
 
           {/* Pagination Footer */}
-          {casesData?.pagination && casesData.pagination.totalPages > 1 && (
-            <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-600">
-              <div>
-                Trang <strong>{casesData.pagination.page}</strong> / <strong>{casesData.pagination.totalPages}</strong> (Tổng {casesData.pagination.total} ca kiểm thử)
+          {casesData?.pagination && (() => {
+            const pagination = casesData.pagination;
+            const totalPages = pagination.totalPages || 1;
+            return (
+              <div className="p-3 border-t border-slate-200 bg-slate-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600">
+                <div className="flex items-center gap-3">
+                  <span>
+                    Hiển thị{' '}
+                    <strong className="text-slate-900">
+                      {pagination.total === 0
+                        ? 0
+                        : (pagination.page - 1) * pagination.limit + 1}
+                    </strong>{' '}
+                    -{' '}
+                    <strong className="text-slate-900">
+                      {Math.min(
+                        pagination.page * pagination.limit,
+                        pagination.total,
+                      )}
+                    </strong>{' '}
+                    trong tổng số{' '}
+                    <strong className="text-indigo-600 font-bold">{pagination.total}</strong> ca kiểm thử
+                  </span>
+
+                  {/* Page Size Selector */}
+                  <div className="flex items-center gap-1.5 ml-2">
+                    <span className="text-slate-300">|</span>
+                    <label className="text-slate-500 text-[11px]">Dòng/trang:</label>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        setPage(1);
+                      }}
+                      className="px-2 py-1 bg-white border border-slate-300 rounded text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs cursor-pointer"
+                    >
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Page navigation controls */}
+                <div className="flex items-center gap-1">
+                  {/* First Page */}
+                  <button
+                    disabled={page <= 1}
+                    onClick={() => setPage(1)}
+                    className="px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition text-xs font-semibold"
+                    title="Về trang đầu"
+                  >
+                    «
+                  </button>
+                  {/* Previous Page */}
+                  <button
+                    disabled={page <= 1}
+                    onClick={() => setPage(page - 1)}
+                    className="px-2.5 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition text-xs"
+                  >
+                    ‹ Trước
+                  </button>
+
+                  {/* Page Number Pills */}
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pNum = i + 1;
+                    if (totalPages > 5) {
+                      if (page <= 3) pNum = i + 1;
+                      else if (page >= totalPages - 2) pNum = totalPages - 4 + i;
+                      else pNum = page - 2 + i;
+                    }
+                    return (
+                      <button
+                        key={pNum}
+                        onClick={() => setPage(pNum)}
+                        className={`w-7 h-7 flex items-center justify-center rounded text-xs font-semibold transition ${
+                          page === pNum
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'border border-slate-300 bg-white hover:bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {pNum}
+                      </button>
+                    );
+                  })}
+
+                  {/* Next Page */}
+                  <button
+                    disabled={page >= totalPages}
+                    onClick={() => setPage(page + 1)}
+                    className="px-2.5 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition text-xs"
+                  >
+                    Sau ›
+                  </button>
+                  {/* Last Page */}
+                  <button
+                    disabled={page >= totalPages}
+                    onClick={() => setPage(totalPages)}
+                    className="px-2.5 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition text-xs font-semibold"
+                    title="Đến trang cuối"
+                  >
+                    »
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  disabled={page <= 1}
-                  onClick={() => setPage(page - 1)}
-                  className="px-2.5 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 transition"
-                >
-                  ← Trước
-                </button>
-                <button
-                  disabled={page >= casesData.pagination.totalPages}
-                  onClick={() => setPage(page + 1)}
-                  className="px-2.5 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 transition"
-                >
-                  Sau →
-                </button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
 

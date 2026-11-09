@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateTestSuiteDto } from './dto/create-test-suite.dto.js';
@@ -74,6 +75,18 @@ export class TestSuitesService {
       if (!parent) {
         throw new NotFoundException('Test Suite cha không tồn tại trong dự án này');
       }
+    }
+
+    // Kiểm tra chống trùng tên Suite trong cùng cấp thư mục
+    const duplicate = await this.prisma.testSuite.findFirst({
+      where: {
+        projectId,
+        parentId: dto.parentId || null,
+        name: { equals: dto.name.trim(), mode: 'insensitive' },
+      },
+    });
+    if (duplicate) {
+      throw new ConflictException(`Test Suite với tên "${dto.name.trim()}" đã tồn tại trong cùng cấp thư mục này`);
     }
 
     return this.prisma.testSuite.create({
@@ -202,6 +215,21 @@ export class TestSuitesService {
           });
           currentParentId = p?.parentId ?? null;
         }
+      }
+    }
+
+    if (dto.name) {
+      const targetParentId = dto.parentId !== undefined ? (dto.parentId || null) : existing.parentId;
+      const duplicate = await this.prisma.testSuite.findFirst({
+        where: {
+          projectId,
+          parentId: targetParentId,
+          name: { equals: dto.name.trim(), mode: 'insensitive' },
+          id: { not: id },
+        },
+      });
+      if (duplicate) {
+        throw new ConflictException(`Test Suite với tên "${dto.name.trim()}" đã tồn tại trong cùng cấp thư mục này`);
       }
     }
 

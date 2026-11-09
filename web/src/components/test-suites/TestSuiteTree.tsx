@@ -48,6 +48,31 @@ export const TestSuiteTree: React.FC<TestSuiteTreeProps> = ({
     setExpandedNodes((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // Expand / Collapse All
+  const handleExpandAll = () => {
+    const allExpanded: Record<string, boolean> = {};
+    const traverse = (nodes: TestSuiteTreeNode[]) => {
+      nodes.forEach((n) => {
+        allExpanded[n.id] = true;
+        if (n.children && n.children.length > 0) traverse(n.children);
+      });
+    };
+    traverse(suites);
+    setExpandedNodes(allExpanded);
+  };
+
+  const handleCollapseAll = () => {
+    const allCollapsed: Record<string, boolean> = {};
+    const traverse = (nodes: TestSuiteTreeNode[]) => {
+      nodes.forEach((n) => {
+        allCollapsed[n.id] = false;
+        if (n.children && n.children.length > 0) traverse(n.children);
+      });
+    };
+    traverse(suites);
+    setExpandedNodes(allCollapsed);
+  };
+
   // Open modal for Create
   const handleOpenCreate = (parentId: string | null = null, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -167,24 +192,25 @@ export const TestSuiteTree: React.FC<TestSuiteTreeProps> = ({
       <div key={node.id} className="select-none">
         <div
           onClick={() => onSelectSuite(node.id)}
-          style={{ paddingLeft: `${depth * 14 + 8}px` }}
+          style={{ paddingLeft: `${depth * 14 + 6}px` }}
           className={`group flex items-center justify-between py-1.5 pr-2 rounded-lg cursor-pointer text-xs transition ${
             isSelected
-              ? 'bg-indigo-50 text-indigo-700 font-semibold'
+              ? 'bg-indigo-50 text-indigo-700 font-semibold shadow-2xs'
               : 'text-slate-700 hover:bg-slate-100'
           }`}
         >
-          <div className="flex items-center gap-1.5 min-w-0">
+          <div className="flex items-center gap-1 min-w-0">
             {hasChildren ? (
               <button
                 type="button"
                 onClick={(e) => toggleExpand(node.id, e)}
-                className="w-4 h-4 flex items-center justify-center text-slate-400 hover:text-slate-600 transition"
+                className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-200 text-slate-500 hover:text-indigo-600 transition text-[10px] font-bold shrink-0"
+                title={isExpanded ? 'Bấm để thu gọn' : 'Bấm để mở rộng'}
               >
-                {isExpanded ? '▾' : '▸'}
+                {isExpanded ? '▼' : '▶'}
               </button>
             ) : (
-              <span className="w-4" />
+              <span className="w-5 flex items-center justify-center text-slate-300 text-xs shrink-0">•</span>
             )}
 
             <span className="text-sm shrink-0">
@@ -199,11 +225,12 @@ export const TestSuiteTree: React.FC<TestSuiteTreeProps> = ({
           <div className="flex items-center gap-1 shrink-0">
             {/* Case count badge */}
             <span
-              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-medium ${
                 isSelected
                   ? 'bg-indigo-200 text-indigo-800'
                   : 'bg-slate-200 text-slate-600 group-hover:bg-slate-300'
               }`}
+              title={`Tổng ${node.totalCaseCount} ca kiểm thử (bao gồm suite con)`}
             >
               {node.totalCaseCount}
             </span>
@@ -213,9 +240,9 @@ export const TestSuiteTree: React.FC<TestSuiteTreeProps> = ({
               <div className="hidden group-hover:flex items-center gap-0.5 ml-1">
                 <button
                   type="button"
-                  title="Thêm Suite con"
+                  title="Thêm Suite con vào đây"
                   onClick={(e) => handleOpenCreate(node.id, e)}
-                  className="p-1 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-800"
+                  className="p-1 hover:bg-indigo-100 rounded text-indigo-600"
                 >
                   ➕
                 </button>
@@ -240,9 +267,9 @@ export const TestSuiteTree: React.FC<TestSuiteTreeProps> = ({
           </div>
         </div>
 
-        {/* Render child nodes if expanded */}
+        {/* Render child nodes if expanded with visual branch guide line */}
         {hasChildren && isExpanded && Array.isArray(node.children) && (
-          <div className="mt-0.5">
+          <div className="mt-0.5 relative before:absolute before:left-[14px] before:top-0 before:bottom-2 before:w-[1px] before:bg-slate-200">
             {node.children.map((child) => renderTreeNode(child, depth + 1))}
           </div>
         )}
@@ -253,18 +280,42 @@ export const TestSuiteTree: React.FC<TestSuiteTreeProps> = ({
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-2xs flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="p-3.5 border-b border-slate-200 flex items-center justify-between">
+      <div className="p-3 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-            <span>📑</span> Test Suites
-          </h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">Cây thư mục phân cấp module</p>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              Cây Test Suites
+            </h3>
+            <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded font-mono font-semibold">
+              {suites.length}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <button
+              type="button"
+              onClick={handleExpandAll}
+              className="text-[10px] text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-0.5"
+              title="Mở rộng tất cả các thư mục"
+            >
+              ⊞ Mở hết
+            </button>
+            <span className="text-slate-300">·</span>
+            <button
+              type="button"
+              onClick={handleCollapseAll}
+              className="text-[10px] text-slate-500 hover:text-slate-700 hover:underline flex items-center gap-0.5"
+              title="Thu gọn tất cả các thư mục"
+            >
+              ⊟ Thu gọn
+            </button>
+          </div>
         </div>
 
         {canManage && (
           <button
             onClick={() => handleOpenCreate(null)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold px-2 py-1 rounded-md shadow-2xs transition flex items-center gap-1"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold px-2.5 py-1.5 rounded-lg shadow-2xs transition flex items-center gap-1 shrink-0"
+            title="Tạo Test Suite gốc"
           >
             <span>+</span> Suite
           </button>
