@@ -158,7 +158,7 @@ export interface TestCaseHistory {
 // SPRINT 3: TEST RUNS, EXECUTIONS, BUGS & NOTIFICATIONS
 // ─────────────────────────────────────────
 
-export type TestRunStatus = 'OPEN' | 'IN_PROGRESS' | 'COMPLETED';
+export type TestRunStatus = 'OPEN' | 'IN_PROGRESS' | 'IN_REVIEW' | 'COMPLETED';
 
 export type TestExecutionStatus =
   | 'UNTESTED'
@@ -173,6 +173,9 @@ export type BugStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
 
 export type NotificationType =
   | 'TEST_RUN_ASSIGNED'
+  | 'TEST_RUN_REVIEW_REQUESTED'
+  | 'TEST_RUN_REWORK_REQUESTED'
+  | 'TEST_RUN_COMPLETED'
   | 'BUG_ASSIGNED'
   | 'BUG_STATUS_CHANGED'
   | 'SYSTEM';
@@ -232,6 +235,7 @@ export interface TestRun {
   assignedToId?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
+  reworkReason?: string | null;
   createdAt: string;
   updatedAt: string;
   createdBy?: {

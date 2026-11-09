@@ -71,8 +71,13 @@ export class TestExecutionsService {
       throw new NotFoundException('Bản ghi thực thi kiểm thử không tồn tại trong đợt chạy này');
     }
 
-    // If run is completed, only QA Lead / Admin can adjust results
+    // If run is completed, strictly lock all data (Read-only)
     if (execution.testRun.status === TestRunStatus.COMPLETED) {
+      throw new BadRequestException('Đợt kiểm thử này đã được chốt và đóng (COMPLETED). Toàn bộ dữ liệu đã được khóa chỉ đọc (Read-only).');
+    }
+
+    // If run is in review, lock changes from non-QA members
+    if (execution.testRun.status === TestRunStatus.IN_REVIEW) {
       const isQAOrAdmin =
         user.systemRole === SystemRole.ADMIN ||
         (await this.prisma.projectMember.findUnique({
@@ -80,7 +85,7 @@ export class TestExecutionsService {
         }))?.role === ProjectRole.QA_LEAD;
 
       if (!isQAOrAdmin) {
-        throw new BadRequestException('Đợt kiểm thử này đã đóng (COMPLETED), không thể cập nhật kết quả');
+        throw new BadRequestException('Đợt kiểm thử đang ở trạng thái Chờ QA rà soát (IN_REVIEW). Vui lòng đợi QA Lead phê duyệt hoặc yêu cầu làm lại.');
       }
     }
 

@@ -47,6 +47,7 @@ enum TestCaseStatus {
 enum TestRunStatus {
   OPEN
   IN_PROGRESS
+  IN_REVIEW
   COMPLETED
 }
 
@@ -74,6 +75,9 @@ enum BugStatus {
 
 enum NotificationType {
   TEST_RUN_ASSIGNED
+  TEST_RUN_REVIEW_REQUESTED
+  TEST_RUN_REWORK_REQUESTED
+  TEST_RUN_COMPLETED
   BUG_ASSIGNED
   BUG_STATUS_CHANGED
   SYSTEM
@@ -298,6 +302,7 @@ model TestRun {
   assignedToId String?       @map("assigned_to_id")
   startedAt    DateTime?     @map("started_at")
   completedAt  DateTime?     @map("completed_at")
+  reworkReason String?       @map("rework_reason")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 

@@ -18,6 +18,7 @@ import { CreateTestRunDto } from './dto/create-test-run.dto.js';
 import { UpdateTestRunDto } from './dto/update-test-run.dto.js';
 import { QueryTestRunDto } from './dto/query-test-run.dto.js';
 import { UpdateExecutionDto } from './dto/update-execution.dto.js';
+import { RequestReworkDto } from './dto/request-rework.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy.js';
@@ -90,6 +91,55 @@ export class TestRunsController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.testRunsService.remove(projectId, id, user);
+  }
+
+  @Post(':id/submit-for-review')
+  @ApiOperation({ summary: 'Gửi yêu cầu QA Lead rà soát và phê duyệt đợt kiểm thử' })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'id', description: 'Test Run ID' })
+  submitForReview(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.testRunsService.submitForReview(projectId, id, user);
+  }
+
+  @Post(':id/request-rework')
+  @ApiOperation({ summary: 'QA Lead yêu cầu làm lại đợt kiểm thử kèm lý do' })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'id', description: 'Test Run ID' })
+  requestRework(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() dto: RequestReworkDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.testRunsService.requestRework(projectId, id, dto.reason, user);
+  }
+
+  @Post(':id/approve-and-close')
+  @ApiOperation({ summary: 'QA Lead chốt và đóng đợt kiểm thử (khóa dữ liệu Read-only)' })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'id', description: 'Test Run ID' })
+  approveAndClose(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.testRunsService.approveAndClose(projectId, id, user);
+  }
+
+  @Post(':id/retest')
+  @ApiOperation({ summary: 'Tạo đợt chạy lại (Retest) tự động clone các ca FAIL và BLOCKED' })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'id', description: 'Test Run ID' })
+  createRetest(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.testRunsService.createRetest(projectId, id, user);
   }
 
   @Patch(':runId/executions/:executionId')

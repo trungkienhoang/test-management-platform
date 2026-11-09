@@ -209,6 +209,8 @@ export class TestRunsService {
       where.OR = [
         { name: { contains: s, mode: 'insensitive' } },
         { description: { contains: s, mode: 'insensitive' } },
+        { assignedTo: { fullName: { contains: s, mode: 'insensitive' } } },
+        { assignedTo: { email: { contains: s, mode: 'insensitive' } } },
       ];
     }
 
@@ -368,5 +370,207 @@ export class TestRunsService {
     return this.prisma.testRun.delete({
       where: { id },
     });
+  }
+
+  // ─── REVIEW & SIGN-OFF WORKFLOW ──────────────────────────────────────────────
+
+  async submitForReview(projectId: string, id: string, user: JwtPayload) {
+    await this.assertProjectMember(projectId, user);
+
+    const run = await this.prisma.testRun.findFirst({
+      where: { id, projectId },
+      include: { project: { select: { name: true } } },
+    });
+
+    if (!run) {
+      throw new NotFoundException('Đợt kiểm thử không tồn tại trong dự án');
+    }
+
+    if (run.status === TestRunStatus.COMPLETED) {
+      throw new BadRequestException('Đợt kiểm thử đã hoàn thành và đóng, không thể gửi duyệt');
+    }
+
+    await this.prisma.testRun.update({
+      where: { id },
+      data: {
+        status: TestRunStatus.IN_REVIEW,
+        reworkReason: null,
+      },
+    });
+
+    // Notify all QA Leads in the project
+    const qaLeads = await this.prisma.projectMember.findMany({
+      where: { projectId, role: ProjectRole.QA_LEAD },
+      select: { userId: true },
+    });
+
+    for (const lead of qaLeads) {
+      if (lead.userId !== user.sub) {
+        await this.notificationsService.create({
+          userId: lead.userId,
+          projectId,
+          title: `Đợt kiểm thử chờ duyệt: [${run.name}]`,
+          message: `${user.email} đã hoàn thành kiểm thử và gửi yêu cầu rà soát đợt chạy "${run.name}".`,
+          type: NotificationType.TEST_RUN_REVIEW_REQUESTED,
+          link: `/projects/${projectId}/test-runs/${run.id}/runner`,
+        });
+      }
+    }
+
+    return this.findOne(projectId, id, user);
+  }
+
+  async requestRework(projectId: string, id: string, reason: string, user: JwtPayload) {
+    await this.assertCanManage(projectId, user);
+
+    const run = await this.prisma.testRun.findFirst({
+      where: { id, projectId },
+      include: { project: { select: { name: true } } },
+    });
+
+    if (!run) {
+      throw new NotFoundException('Đợt kiểm thử không tồn tại trong dự án');
+    }
+
+    if (run.status === TestRunStatus.COMPLETED) {
+      throw new BadRequestException('Đợt kiểm thử đã hoàn thành và đóng, không thể yêu cầu làm lại');
+    }
+
+    await this.prisma.testRun.update({
+      where: { id },
+      data: {
+        status: TestRunStatus.IN_PROGRESS,
+        reworkReason: reason.trim(),
+      },
+    });
+
+    // Notify assignee and creator
+    const recipients = new Set<string>();
+    if (run.assignedToId && run.assignedToId !== user.sub) recipients.add(run.assignedToId);
+    if (run.createdById && run.createdById !== user.sub) recipients.add(run.createdById);
+
+    for (const rId of recipients) {
+      await this.notificationsService.create({
+        userId: rId,
+        projectId,
+        title: `Yêu cầu làm lại đợt kiểm thử: [${run.name}]`,
+        message: `QA Lead yêu cầu làm lại với lý do: "${reason.trim()}".`,
+        type: NotificationType.TEST_RUN_REWORK_REQUESTED,
+        link: `/projects/${projectId}/test-runs/${run.id}/runner`,
+      });
+    }
+
+    return this.findOne(projectId, id, user);
+  }
+
+  async approveAndClose(projectId: string, id: string, user: JwtPayload) {
+    await this.assertCanManage(projectId, user);
+
+    const run = await this.prisma.testRun.findFirst({
+      where: { id, projectId },
+      include: { project: { select: { name: true } } },
+    });
+
+    if (!run) {
+      throw new NotFoundException('Đợt kiểm thử không tồn tại trong dự án');
+    }
+
+    await this.prisma.testRun.update({
+      where: { id },
+      data: {
+        status: TestRunStatus.COMPLETED,
+        completedAt: new Date(),
+        reworkReason: null,
+      },
+    });
+
+    // Notify assignee and creator
+    const recipients = new Set<string>();
+    if (run.assignedToId && run.assignedToId !== user.sub) recipients.add(run.assignedToId);
+    if (run.createdById && run.createdById !== user.sub) recipients.add(run.createdById);
+
+    for (const rId of recipients) {
+      await this.notificationsService.create({
+        userId: rId,
+        projectId,
+        title: `Đợt kiểm thử đã hoàn thành: [${run.name}]`,
+        message: `QA Lead đã rà soát và chính thức chốt đợt kiểm thử "${run.name}". Toàn bộ kết quả đã được khóa chỉ đọc.`,
+        type: NotificationType.TEST_RUN_COMPLETED,
+        link: `/projects/${projectId}/test-runs/${run.id}/runner`,
+      });
+    }
+
+    return this.findOne(projectId, id, user);
+  }
+
+  async createRetest(projectId: string, id: string, user: JwtPayload) {
+    await this.assertCanWrite(projectId, user);
+
+    const originalRun = await this.prisma.testRun.findFirst({
+      where: { id, projectId },
+      include: {
+        project: { select: { name: true } },
+        executions: {
+          where: {
+            status: { in: [TestExecutionStatus.FAILED, TestExecutionStatus.BLOCKED] },
+          },
+        },
+      },
+    });
+
+    if (!originalRun) {
+      throw new NotFoundException('Không tìm thấy đợt kiểm thử gốc');
+    }
+
+    if (!originalRun.executions.length) {
+      throw new BadRequestException(
+        'Đợt kiểm thử này không có ca test nào bị Thất bại (FAIL) hoặc Bị chặn (BLOCKED) để chạy lại.',
+      );
+    }
+
+    const retestRun = await this.prisma.$transaction(async (tx) => {
+      const newRun = await tx.testRun.create({
+        data: {
+          projectId,
+          name: `[Retest] ${originalRun.name}`,
+          description: `Đợt chạy lại (Retest) cho ${originalRun.executions.length} ca kiểm thử FAILED/BLOCKED từ đợt: "${originalRun.name}"`,
+          createdById: user.sub,
+          assignedToId: originalRun.assignedToId || user.sub,
+          status: TestRunStatus.OPEN,
+        },
+      });
+
+      const executionData = originalRun.executions.map((e) => ({
+        testRunId: newRun.id,
+        testCaseId: e.testCaseId,
+        testCaseCode: e.testCaseCode,
+        testCaseTitle: e.testCaseTitle,
+        testCasePreconditions: e.testCasePreconditions,
+        testCaseSteps: e.testCaseSteps as any,
+        testCasePriority: e.testCasePriority,
+        testCaseVersion: e.testCaseVersion,
+        status: TestExecutionStatus.UNTESTED,
+      }));
+
+      await tx.testExecution.createMany({
+        data: executionData,
+      });
+
+      return newRun;
+    });
+
+    // Notify assignee if assigned to another user
+    if (retestRun.assignedToId && retestRun.assignedToId !== user.sub) {
+      await this.notificationsService.create({
+        userId: retestRun.assignedToId,
+        projectId,
+        title: 'Bạn được gán đợt Retest mới',
+        message: `Bạn được giao thực thi đợt chạy lại "${retestRun.name}" gồm ${originalRun.executions.length} ca test.`,
+        type: NotificationType.TEST_RUN_ASSIGNED,
+        link: `/projects/${projectId}/test-runs/${retestRun.id}/runner`,
+      });
+    }
+
+    return this.findOne(projectId, retestRun.id, user);
   }
 }
