@@ -13,7 +13,7 @@ import { ProjectRole, SystemRole, TestRunStatus, TestExecutionStatus } from '@pr
 export class TestExecutionsService {
   constructor(private prisma: PrismaService) {}
 
-  private async assertCanExecute(projectId: string, user: JwtPayload) {
+  private async assertCanExecute(projectId: string, runId: string, user: JwtPayload) {
     if (user.systemRole === SystemRole.ADMIN) return;
 
     const member = await this.prisma.projectMember.findUnique({
@@ -26,8 +26,24 @@ export class TestExecutionsService {
       throw new ForbiddenException('Bạn không phải thành viên của dự án này');
     }
 
-    if (member.role !== ProjectRole.QA_LEAD && member.role !== ProjectRole.TESTER) {
-      throw new ForbiddenException('Chỉ QA Lead hoặc Tester mới có quyền thực thi ca kiểm thử');
+    // Check if user is explicitly assigned to this test run or created it
+    const testRun = await this.prisma.testRun.findUnique({
+      where: { id: runId },
+      select: { assignedToId: true, createdById: true },
+    });
+
+    const isAssignedOrCreator =
+      testRun && (testRun.assignedToId === user.sub || testRun.createdById === user.sub);
+
+    // If assigned to this run, they are authorized to execute regardless of general role
+    if (isAssignedOrCreator) return;
+
+    if (
+      member.role !== ProjectRole.QA_LEAD &&
+      member.role !== ProjectRole.TESTER &&
+      member.role !== ProjectRole.DEVELOPER
+    ) {
+      throw new ForbiddenException('Chỉ người được giao đợt kiểm thử, QA Lead, Tester hoặc Developer mới có quyền thực thi ca kiểm thử');
     }
   }
 
@@ -38,7 +54,7 @@ export class TestExecutionsService {
     dto: UpdateExecutionDto,
     user: JwtPayload,
   ) {
-    await this.assertCanExecute(projectId, user);
+    await this.assertCanExecute(projectId, runId, user);
 
     const execution = await this.prisma.testExecution.findFirst({
       where: {

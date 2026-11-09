@@ -40,8 +40,12 @@ export class TestRunsService {
   private async assertCanWrite(projectId: string, user: JwtPayload) {
     if (user.systemRole === SystemRole.ADMIN) return;
     const role = await this.assertProjectMember(projectId, user);
-    if (role !== ProjectRole.QA_LEAD && role !== ProjectRole.TESTER) {
-      throw new ForbiddenException('Chỉ QA Lead hoặc Tester mới có quyền thực hiện thao tác này');
+    if (
+      role !== ProjectRole.QA_LEAD &&
+      role !== ProjectRole.TESTER &&
+      role !== ProjectRole.DEVELOPER
+    ) {
+      throw new ForbiddenException('Chỉ QA Lead, Tester hoặc Developer mới có quyền thực hiện thao tác này');
     }
   }
 
