@@ -52,23 +52,20 @@ export const BugModal: React.FC<BugModalProps> = ({
     const loadData = async () => {
       setLoading(true);
       try {
-        const [mRes, tcRes] = await Promise.all([
+        const [mRes, tcRes] = await Promise.allSettled([
           apiClient.get(`/projects/${projectId}/members`),
-          apiClient.get(`/projects/${projectId}/test-cases?limit=200`),
+          apiClient.get(`/projects/${projectId}/test-cases?limit=100`),
         ]);
-        const membersData = Array.isArray(mRes.data)
-          ? mRes.data
-          : Array.isArray(mRes.data?.data)
-          ? mRes.data.data
-          : [];
-        const casesData = Array.isArray(tcRes.data)
-          ? tcRes.data
-          : Array.isArray(tcRes.data?.data)
-          ? tcRes.data.data
-          : [];
 
-        setMembers(membersData);
-        setTestCases(casesData);
+        if (mRes.status === 'fulfilled') {
+          const raw = mRes.value.data;
+          setMembers(Array.isArray(raw) ? raw : raw?.data || []);
+        }
+
+        if (tcRes.status === 'fulfilled') {
+          const raw = tcRes.value.data;
+          setTestCases(Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []);
+        }
       } catch (err: any) {
         console.error('Failed to load members/cases', err);
         setError(err.response?.data?.message || 'Không thể tải dữ liệu thành viên hoặc test case');
@@ -210,7 +207,7 @@ export const BugModal: React.FC<BugModalProps> = ({
                 <option value="">-- Chưa chỉ định --</option>
                 {members.map((m) => (
                   <option key={m.userId} value={m.userId}>
-                    {m.user.fullName} ({m.role})
+                    {m.user?.fullName || m.userId} ({m.role}){m.user?.email ? ` - ${m.user.email}` : ''}
                   </option>
                 ))}
               </select>

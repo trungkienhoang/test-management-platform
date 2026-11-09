@@ -35,34 +35,37 @@ export const CreateTestRunModal: React.FC<CreateTestRunModalProps> = ({
       setLoading(true);
       setError(null);
       try {
-        const [membersRes, suitesRes, casesRes] = await Promise.all([
+        const [membersRes, suitesRes, casesRes] = await Promise.allSettled([
           apiClient.get(`/projects/${projectId}/members`),
           apiClient.get(`/projects/${projectId}/suites`),
-          apiClient.get(`/projects/${projectId}/test-cases?limit=200`),
+          apiClient.get(`/projects/${projectId}/test-cases?limit=100`),
         ]);
 
-        const membersData = Array.isArray(membersRes.data)
-          ? membersRes.data
-          : Array.isArray(membersRes.data?.data)
-          ? membersRes.data.data
-          : [];
-        const suitesData = Array.isArray(suitesRes.data)
-          ? suitesRes.data
-          : Array.isArray(suitesRes.data?.data)
-          ? suitesRes.data.data
-          : [];
-        const casesData = Array.isArray(casesRes.data)
-          ? casesRes.data
-          : Array.isArray(casesRes.data?.data)
-          ? casesRes.data.data
-          : [];
+        if (membersRes.status === 'fulfilled') {
+          const raw = membersRes.value.data;
+          setMembers(Array.isArray(raw) ? raw : raw?.data || []);
+        } else {
+          console.error('Failed to load members:', membersRes.reason);
+        }
 
-        setMembers(membersData);
-        setSuites(suitesData);
-        setTestCases(casesData);
+        if (suitesRes.status === 'fulfilled') {
+          const raw = suitesRes.value.data;
+          setSuites(Array.isArray(raw) ? raw : raw?.data || []);
+        } else {
+          console.error('Failed to load suites:', suitesRes.reason);
+        }
+
+        if (casesRes.status === 'fulfilled') {
+          const raw = casesRes.value.data;
+          setTestCases(Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []);
+        } else {
+          console.error('Failed to load test cases:', casesRes.reason);
+          const msg = casesRes.reason?.response?.data?.message;
+          if (msg) setError(Array.isArray(msg) ? msg.join(', ') : msg);
+        }
       } catch (err: any) {
         console.error('CreateTestRunModal loadData error:', err);
-        setError(err.response?.data?.message || 'Không thể tải dữ liệu thành viên hoặc test case');
+        setError(err.response?.data?.message || 'Không thể tải dữ liệu');
       } finally {
         setLoading(false);
       }
@@ -211,7 +214,7 @@ export const CreateTestRunModal: React.FC<CreateTestRunModalProps> = ({
               <option value="">-- Chưa gán người thực thi --</option>
               {members.map((m) => (
                 <option key={m.userId} value={m.userId}>
-                  {m.user.fullName} ({m.role}) - {m.user.email}
+                  {m.user?.fullName || m.userId} ({m.role}){m.user?.email ? ` - ${m.user.email}` : ''}
                 </option>
               ))}
             </select>
