@@ -54,12 +54,24 @@ export const BugModal: React.FC<BugModalProps> = ({
       try {
         const [mRes, tcRes] = await Promise.all([
           apiClient.get(`/projects/${projectId}/members`),
-          apiClient.get(`/projects/${projectId}/cases?limit=200`),
+          apiClient.get(`/projects/${projectId}/test-cases?limit=200`),
         ]);
-        setMembers(mRes.data.data || mRes.data || []);
-        setTestCases(tcRes.data.data || tcRes.data || []);
-      } catch (err) {
+        const membersData = Array.isArray(mRes.data)
+          ? mRes.data
+          : Array.isArray(mRes.data?.data)
+          ? mRes.data.data
+          : [];
+        const casesData = Array.isArray(tcRes.data)
+          ? tcRes.data
+          : Array.isArray(tcRes.data?.data)
+          ? tcRes.data.data
+          : [];
+
+        setMembers(membersData);
+        setTestCases(casesData);
+      } catch (err: any) {
         console.error('Failed to load members/cases', err);
+        setError(err.response?.data?.message || 'Không thể tải dữ liệu thành viên hoặc test case');
       } finally {
         setLoading(false);
       }

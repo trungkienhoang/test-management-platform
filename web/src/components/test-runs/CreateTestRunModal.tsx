@@ -37,14 +37,32 @@ export const CreateTestRunModal: React.FC<CreateTestRunModalProps> = ({
       try {
         const [membersRes, suitesRes, casesRes] = await Promise.all([
           apiClient.get(`/projects/${projectId}/members`),
-          apiClient.get(`/projects/${projectId}/suites/tree`),
-          apiClient.get(`/projects/${projectId}/cases?limit=200`),
+          apiClient.get(`/projects/${projectId}/suites`),
+          apiClient.get(`/projects/${projectId}/test-cases?limit=200`),
         ]);
-        setMembers(membersRes.data.data || membersRes.data || []);
-        setSuites(suitesRes.data.data || suitesRes.data || []);
-        setTestCases(casesRes.data.data || casesRes.data || []);
+
+        const membersData = Array.isArray(membersRes.data)
+          ? membersRes.data
+          : Array.isArray(membersRes.data?.data)
+          ? membersRes.data.data
+          : [];
+        const suitesData = Array.isArray(suitesRes.data)
+          ? suitesRes.data
+          : Array.isArray(suitesRes.data?.data)
+          ? suitesRes.data.data
+          : [];
+        const casesData = Array.isArray(casesRes.data)
+          ? casesRes.data
+          : Array.isArray(casesRes.data?.data)
+          ? casesRes.data.data
+          : [];
+
+        setMembers(membersData);
+        setSuites(suitesData);
+        setTestCases(casesData);
       } catch (err: any) {
-        setError('Không thể tải dữ liệu thành viên hoặc test case');
+        console.error('CreateTestRunModal loadData error:', err);
+        setError(err.response?.data?.message || 'Không thể tải dữ liệu thành viên hoặc test case');
       } finally {
         setLoading(false);
       }
