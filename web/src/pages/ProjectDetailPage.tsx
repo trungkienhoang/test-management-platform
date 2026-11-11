@@ -325,7 +325,7 @@ export const ProjectDetailPage: React.FC = () => {
       )}
 
       {/* Sprint Roadmap Tabs for this Project */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Link
           to={`/projects/${id}/repository`}
           className="bg-white p-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-xs transition group block"
@@ -376,6 +376,19 @@ export const ProjectDetailPage: React.FC = () => {
           <div className="text-2xl font-bold text-slate-800 mt-1">{bugsSummaryData?.total ?? 0}</div>
           <div className="text-[11px] text-rose-600 mt-1 font-medium flex items-center gap-1">
             Quản lý lỗi & xử lý →
+          </div>
+        </Link>
+        <Link
+          to={`/projects/${id}/dashboard`}
+          className="bg-white p-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-xs transition group block"
+        >
+          <div className="text-xs text-slate-400 group-hover:text-indigo-600 uppercase font-semibold flex items-center justify-between">
+            <span>Dashboard</span>
+            <span className="text-sm">📊</span>
+          </div>
+          <div className="text-2xl font-bold text-slate-800 mt-1">Chỉ số</div>
+          <div className="text-[11px] text-indigo-600 mt-1 font-medium flex items-center gap-1">
+            Biểu đồ & Xuất báo cáo →
           </div>
         </Link>
       </div>

@@ -12,6 +12,7 @@ import { TestRepositoryPage } from './pages/TestRepositoryPage';
 import { TestRunsPage } from './pages/TestRunsPage';
 import { TestRunnerPage } from './pages/TestRunnerPage';
 import { BugsPage } from './pages/BugsPage';
+import { DashboardPage } from './pages/DashboardPage';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 const queryClient = new QueryClient({
@@ -96,16 +97,8 @@ export const App: React.FC = () => {
 
               <Route path="projects/:id/bugs" element={<BugsPage />} />
               <Route path="bugs" element={<BugsPage />} />
-              <Route
-                path="dashboard"
-                element={
-                  <div className="bg-white p-8 rounded-xl border border-slate-200 text-center">
-                    <span className="text-3xl">📊</span>
-                    <h3 className="font-bold text-slate-800 mt-2">Dashboard Thống Kê (Sprint 4)</h3>
-                    <p className="text-xs text-slate-500 mt-1">Sẽ được phát triển trong Sprint 4: 18/01 - 31/01</p>
-                  </div>
-                }
-              />
+              <Route path="projects/:id/dashboard" element={<DashboardPage />} />
+              <Route path="dashboard" element={<DashboardPage />} />
             </Route>
 
             {/* Fallback */}

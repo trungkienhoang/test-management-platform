@@ -4,6 +4,7 @@ import { apiClient } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import type { TestRun, Project, ProjectMember } from '../types';
 import { CreateTestRunModal } from '../components/test-runs/CreateTestRunModal';
+import { TestRunReportModal } from '../components/reports/TestRunReportModal';
 
 export const TestRunsPage: React.FC = () => {
   const { id: paramProjectId } = useParams<{ id: string }>();
@@ -19,6 +20,7 @@ export const TestRunsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [reportRunId, setReportRunId] = useState<string | null>(null);
 
   // Load user projects
   useEffect(() => {
@@ -554,6 +556,15 @@ export const TestRunsPage: React.FC = () => {
                         </>
                       )}
 
+                      {/* Báo cáo tổng kết đợt kiểm thử */}
+                      <button
+                        onClick={() => setReportRunId(run.id)}
+                        className="px-2.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition flex items-center gap-1 shadow-2xs"
+                        title="Xem và Xuất Báo Cáo Tổng Kết (Excel & PDF)"
+                      >
+                        <span>📑</span> Báo cáo
+                      </button>
+
                       {/* Delete button (QA Lead only, not allowed if completed) */}
                       {isQALeadOrAdmin && !isCompleted && (
                         <button
@@ -594,6 +605,16 @@ export const TestRunsPage: React.FC = () => {
           onCreated={() => {
             fetchRuns();
           }}
+        />
+      )}
+
+      {/* Modal Test Run Summary Report */}
+      {reportRunId && (
+        <TestRunReportModal
+          projectId={selectedProjectId}
+          runId={reportRunId}
+          isOpen={!!reportRunId}
+          onClose={() => setReportRunId(null)}
         />
       )}
     </div>

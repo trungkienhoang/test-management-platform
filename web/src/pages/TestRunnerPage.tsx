@@ -11,6 +11,7 @@ import type {
   TestCaseStep,
   ProjectMember,
 } from '../types';
+import { TestRunReportModal } from '../components/reports/TestRunReportModal';
 
 export const TestRunnerPage: React.FC = () => {
   const { id: projectId, runId } = useParams<{ id: string; runId: string }>();
@@ -48,6 +49,7 @@ export const TestRunnerPage: React.FC = () => {
 
   // Action loading states
   const [actionLoading, setActionLoading] = useState<boolean>(false);
+  const [isReportOpen, setIsReportOpen] = useState<boolean>(false);
 
   // Load project members to determine role
   useEffect(() => {
@@ -435,6 +437,14 @@ export const TestRunnerPage: React.FC = () => {
               <span>{formatTimer(timerSeconds)}</span>
             </div>
           )}
+
+          <button
+            onClick={() => setIsReportOpen(true)}
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center gap-1.5 shadow-2xs"
+            title="Xem báo cáo tổng kết và xuất Excel/PDF"
+          >
+            <span>📑</span> Báo Cáo
+          </button>
         </div>
       </div>
 
@@ -1133,6 +1143,16 @@ export const TestRunnerPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Báo Cáo Tổng Kết */}
+      {isReportOpen && projectId && runId && (
+        <TestRunReportModal
+          projectId={projectId}
+          runId={runId}
+          isOpen={isReportOpen}
+          onClose={() => setIsReportOpen(false)}
+        />
       )}
     </div>
   );

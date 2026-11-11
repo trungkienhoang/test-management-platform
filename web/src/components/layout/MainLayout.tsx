@@ -12,12 +12,12 @@ export const MainLayout: React.FC = () => {
     navigate('/login');
   };
 
-  const projectNavItems = [
+  const projectNavItems: Array<{ name: string; path: string; icon: string; badge?: string }> = [
     { name: 'Dự án (Projects)', path: '/projects', icon: '📁' },
     { name: 'Kho Test Suites & Cases', path: '/test-suites', icon: '📑' },
     { name: 'Test Runs', path: '/test-runs', icon: '▶️' },
     { name: 'Quản lý Bug', path: '/bugs', icon: '🐛' },
-    { name: 'Dashboard', path: '/dashboard', icon: '📊', badge: 'Sprint 4' },
+    { name: 'Dashboard', path: '/dashboard', icon: '📊' },
   ];
 
   return (
@@ -30,7 +30,7 @@ export const MainLayout: React.FC = () => {
             <span className="text-2xl">🧪</span>
             <div>
               <h1 className="font-bold text-sm tracking-wide text-white">Test Platform</h1>
-              <p className="text-xs text-emerald-400">v1.3 · Sprint 3</p>
+              <p className="text-xs text-emerald-400">v1.4 · Sprint 4</p>
             </div>
           </div>
 

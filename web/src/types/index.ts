@@ -353,4 +353,114 @@ export interface Notification {
   createdAt: string;
 }
 
+// ─────────────────────────────────────────
+// SPRINT 4: DASHBOARD & REPORTS
+// ─────────────────────────────────────────
+
+export interface DashboardSummary {
+  overview: {
+    totalTestCases: number;
+    testCasesByStatus: Record<TestCaseStatus, number>;
+    testCasesByPriority: Record<TestCasePriority, number>;
+    totalTestSuites: number;
+    totalTestRuns: number;
+    testRunsByStatus: Record<TestRunStatus, number>;
+    totalExecutions: number;
+    executionsByStatus: Record<TestExecutionStatus, number>;
+    passRate: number;
+    totalBugs: number;
+    activeBugs: number;
+    resolvedBugs: number;
+    bugsBySeverity: Record<BugSeverity, number>;
+    bugsByStatus: Record<BugStatus, number>;
+  };
+  recentRuns: Array<{
+    id: string;
+    name: string;
+    status: TestRunStatus;
+    createdAt: string;
+    completedAt: string | null;
+    assignedTo: { id: string; fullName: string; email: string } | null;
+    totalTests: number;
+    passed: number;
+    failed: number;
+    blocked: number;
+    skipped: number;
+    untested: number;
+    passRate: number;
+  }>;
+  testerWorkload: Array<{
+    user: { id: string; fullName: string; email: string; avatarUrl: string | null };
+    totalExecuted: number;
+    passed: number;
+    failed: number;
+    blocked: number;
+    skipped: number;
+    bugsReported: number;
+  }>;
+  executionTrend: Array<{
+    date: string;
+    passed: number;
+    failed: number;
+    blocked: number;
+    skipped: number;
+    total: number;
+  }>;
+}
+
+export interface TestRunSummaryReport {
+  run: {
+    id: string;
+    name: string;
+    description: string | null;
+    status: TestRunStatus;
+    createdAt: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    reworkReason: string | null;
+    createdBy: { id: string; fullName: string; email: string };
+    assignedTo: { id: string; fullName: string; email: string } | null;
+    parentRun: { id: string; name: string } | null;
+    projectName: string;
+  };
+  metrics: {
+    total: number;
+    executed: number;
+    passed: number;
+    failed: number;
+    blocked: number;
+    skipped: number;
+    untested: number;
+    passRate: number;
+    progressRate: number;
+    totalDurationMs: number;
+    totalBugs: number;
+  };
+  executions: Array<{
+    id: string;
+    testCaseId: string | null;
+    testCaseCode: string;
+    testCaseTitle: string;
+    testCasePriority: TestCasePriority;
+    testCaseVersion: number;
+    status: TestExecutionStatus;
+    actualResult: string | null;
+    executedBy: { id: string; fullName: string; email: string } | null;
+    executedAt: string | null;
+    executionDurationMs: number | null;
+    bugs: Array<{ id: string; code: string; title: string; severity: BugSeverity; status: BugStatus }>;
+  }>;
+  bugs: Array<{
+    id: string;
+    code: string;
+    title: string;
+    severity: BugSeverity;
+    status: BugStatus;
+    createdAt: string;
+    createdBy: { id: string; fullName: string };
+    assignee: { id: string; fullName: string } | null;
+    testCase: { id: string; code: string; title: string } | null;
+  }>;
+}
+
 
