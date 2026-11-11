@@ -100,16 +100,20 @@ export const BugDetailDrawer: React.FC<BugDetailDrawerProps> = ({
           <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">
             Trạng thái vòng đời lỗi:
           </span>
-          <div className="grid grid-cols-4 gap-2">
-            {(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as BugStatus[]).map((st) => (
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'VERIFIED', 'CLOSED', 'REOPENED'] as BugStatus[]).map((st) => (
               <button
                 key={st}
                 disabled={updatingStatus}
                 onClick={() => handleStatusChange(st)}
-                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 ${
+                className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 ${
                   bug.status === st
                     ? st === 'RESOLVED' || st === 'CLOSED'
                       ? 'bg-emerald-600 text-white shadow-xs'
+                      : st === 'VERIFIED'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : st === 'REOPENED'
+                      ? 'bg-rose-600 text-white shadow-xs'
                       : st === 'IN_PROGRESS'
                       ? 'bg-indigo-600 text-white shadow-xs'
                       : 'bg-slate-800 text-white shadow-xs'
@@ -119,7 +123,9 @@ export const BugDetailDrawer: React.FC<BugDetailDrawerProps> = ({
                 {st === 'OPEN' && 'Mở'}
                 {st === 'IN_PROGRESS' && 'Đang sửa'}
                 {st === 'RESOLVED' && 'Đã sửa'}
+                {st === 'VERIFIED' && 'Đã duyệt'}
                 {st === 'CLOSED' && 'Đã đóng'}
+                {st === 'REOPENED' && 'Mở lại'}
               </button>
             ))}
           </div>

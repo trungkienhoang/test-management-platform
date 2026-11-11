@@ -169,7 +169,7 @@ export type TestExecutionStatus =
 
 export type BugSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
-export type BugStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+export type BugStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'VERIFIED' | 'CLOSED' | 'REOPENED';
 
 export type NotificationType =
   | 'TEST_RUN_ASSIGNED'
@@ -228,6 +228,11 @@ export interface TestExecution {
 export interface TestRun {
   id: string;
   projectId: string;
+  parentRunId?: string | null;
+  parentRun?: {
+    id: string;
+    name: string;
+  } | null;
   name: string;
   description?: string | null;
   status: TestRunStatus;
@@ -252,6 +257,17 @@ export interface TestRun {
   } | null;
   executions?: TestExecution[];
   stats?: TestRunStats;
+  permissions?: {
+    isQALeadOrAdmin: boolean;
+    canExecute: boolean;
+    canSubmitForReview: boolean;
+    canReview: boolean;
+    canApprove: boolean;
+    canRequestRework: boolean;
+    canRetest: boolean;
+    canEdit: boolean;
+    canDelete: boolean;
+  };
   _count?: {
     executions: number;
   };

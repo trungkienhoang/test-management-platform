@@ -1,6 +1,5 @@
-import { IsOptional, IsString, IsEnum } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { TestRunStatus } from '@prisma/client';
 
 export class UpdateTestRunDto {
   @ApiPropertyOptional({ description: 'Tên đợt kiểm thử' })
@@ -17,9 +16,4 @@ export class UpdateTestRunDto {
   @IsOptional()
   @IsString()
   assignedToId?: string | null;
-
-  @ApiPropertyOptional({ enum: TestRunStatus, description: 'Trạng thái đợt kiểm thử' })
-  @IsOptional()
-  @IsEnum(TestRunStatus)
-  status?: TestRunStatus;
 }

@@ -10,6 +10,7 @@ const mockPrisma = {
   },
   project: {
     findUnique: vi.fn(),
+    update: vi.fn().mockResolvedValue({ testCaseSeq: 1 }),
   },
   testSuite: {
     findFirst: vi.fn(),
@@ -37,6 +38,8 @@ describe('TestCasesService', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    mockPrisma.$transaction.mockImplementation((callback) => callback(mockPrisma));
+    mockPrisma.project.update.mockResolvedValue({ testCaseSeq: 1 });
     service = new TestCasesService(mockPrisma as any);
   });
 

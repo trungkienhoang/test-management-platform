@@ -129,8 +129,12 @@ export const BugsPage: React.FC = () => {
         return 'bg-indigo-100 text-indigo-700 border-indigo-200';
       case 'RESOLVED':
         return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      case 'VERIFIED':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'CLOSED':
         return 'bg-teal-100 text-teal-800 border-teal-200';
+      case 'REOPENED':
+        return 'bg-rose-100 text-rose-800 border-rose-300';
       default:
         return 'bg-slate-100 text-slate-700 border-slate-200';
     }
@@ -252,7 +256,9 @@ export const BugsPage: React.FC = () => {
               <option value="OPEN">Mở (Open)</option>
               <option value="IN_PROGRESS">Đang xử lý</option>
               <option value="RESOLVED">Đã sửa</option>
+              <option value="VERIFIED">Đã xác minh (Verified)</option>
               <option value="CLOSED">Đã đóng</option>
+              <option value="REOPENED">Mở lại (Reopened)</option>
             </select>
           </div>
 
@@ -363,7 +369,11 @@ export const BugsPage: React.FC = () => {
                           ? 'Đang sửa'
                           : bug.status === 'RESOLVED'
                           ? 'Đã sửa'
-                          : 'Đã đóng'}
+                          : bug.status === 'VERIFIED'
+                          ? 'Đã xác minh'
+                          : bug.status === 'CLOSED'
+                          ? 'Đã đóng'
+                          : 'Mở lại'}
                       </span>
                     </td>
 

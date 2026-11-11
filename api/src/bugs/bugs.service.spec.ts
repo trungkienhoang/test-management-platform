@@ -16,8 +16,11 @@ describe('BugsService', () => {
 
   beforeEach(() => {
     mockPrisma = {
-      project: { findUnique: vi.fn() },
-      projectMember: { findUnique: vi.fn() },
+      project: {
+        findUnique: vi.fn(),
+        update: vi.fn().mockResolvedValue({ bugSeq: 1 }),
+      },
+      projectMember: { findUnique: vi.fn().mockResolvedValue({ role: 'DEVELOPER' }) },
       testCase: { findFirst: vi.fn() },
       testExecution: { findFirst: vi.fn() },
       bug: {
@@ -83,6 +86,7 @@ describe('BugsService', () => {
 
   it('tự tăng mã BUG-2 khi đã có BUG-1', async () => {
     mockPrisma.project.findUnique.mockResolvedValue({ id: 'proj-1', name: 'Project Alpha' });
+    mockPrisma.project.update.mockResolvedValueOnce({ bugSeq: 2 });
     mockPrisma.bug.findMany.mockResolvedValue([{ code: 'BUG-1' }]);
 
     mockPrisma.bug.create.mockImplementation(({ data }: any) => {

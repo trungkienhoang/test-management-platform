@@ -62,8 +62,7 @@ export const TestRunsPage: React.FC = () => {
   const currentUserMember = members.find((m) => m.userId === user?.id);
   const isQALeadOrAdmin =
     user?.systemRole === 'ADMIN' ||
-    currentUserMember?.role === 'QA_LEAD' ||
-    currentProject?.createdById === user?.id;
+    currentUserMember?.role === 'QA_LEAD';
 
   const fetchRuns = async () => {
     if (!selectedProjectId) return;
@@ -373,6 +372,12 @@ export const TestRunsPage: React.FC = () => {
                         {run.name}
                       </h3>
 
+                      {run.parentRun && (
+                        <span className="text-[11px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                          <span>🔄</span> Retest từ: {run.parentRun.name}
+                        </span>
+                      )}
+
                       <span className="text-xs text-slate-400">
                         ({stats.total} ca kiểm thử)
                       </span>
@@ -549,8 +554,8 @@ export const TestRunsPage: React.FC = () => {
                         </>
                       )}
 
-                      {/* Delete button (QA Lead or Creator) */}
-                      {(isQALeadOrAdmin || run.createdById === user?.id) && (
+                      {/* Delete button (QA Lead only, not allowed if completed) */}
+                      {isQALeadOrAdmin && !isCompleted && (
                         <button
                           onClick={() => handleDeleteRun(run.id)}
                           disabled={actionLoading === run.id}

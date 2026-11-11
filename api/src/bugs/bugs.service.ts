@@ -52,21 +52,13 @@ export class BugsService {
   // ─── CODE GENERATION HELPER ──────────────────────────────────────────────────
 
   private async generateNextBugCode(tx: Prisma.TransactionClient, projectId: string): Promise<string> {
-    const existingBugs = await tx.bug.findMany({
-      where: { projectId },
-      select: { code: true },
+    const updated = await tx.project.update({
+      where: { id: projectId },
+      data: { bugSeq: { increment: 1 } },
+      select: { bugSeq: true },
     });
 
-    let maxNum = 0;
-    for (const b of existingBugs) {
-      const match = b.code.match(/^BUG-(\d+)$/i);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxNum) maxNum = num;
-      }
-    }
-
-    return `BUG-${maxNum + 1}`;
+    return `BUG-${updated.bugSeq}`;
   }
 
   // ─── CREATE ──────────────────────────────────────────────────────────────────
@@ -77,14 +69,37 @@ export class BugsService {
     const project = await this.prisma.project.findUnique({ where: { id: projectId } });
     if (!project) throw new NotFoundException('Không tìm thấy dự án');
 
+    // Reject creating bug with terminal/verified status immediately
+    if (
+      dto.status &&
+      dto.status !== BugStatus.OPEN &&
+      dto.status !== BugStatus.IN_PROGRESS
+    ) {
+      throw new BadRequestException('Lỗi mới tạo chỉ có thể bắt đầu ở trạng thái MỞ (OPEN) hoặc ĐANG XỬ LÝ (IN_PROGRESS)');
+    }
+
+    // Validate assignee is a project member
+    if (dto.assigneeId) {
+      const member = await this.prisma.projectMember.findUnique({
+        where: { projectId_userId: { projectId, userId: dto.assigneeId } },
+      });
+      if (!member) {
+        throw new BadRequestException('Người được giao xử lý không phải là thành viên của dự án này');
+      }
+    }
+
     let resolvedTestCaseId = dto.testCaseId;
 
     if (dto.testExecutionId) {
       const execution = await this.prisma.testExecution.findFirst({
         where: { id: dto.testExecutionId, testRun: { projectId } },
+        include: { testRun: { select: { id: true, status: true, name: true } } },
       });
       if (!execution) {
         throw new BadRequestException('Lượt thực thi kiểm thử không thuộc dự án này');
+      }
+      if (execution.testRun.status === 'COMPLETED') {
+        throw new ForbiddenException('Đợt kiểm thử đã hoàn thành (COMPLETED) và khóa chỉ đọc, không thể liên kết thêm lỗi');
       }
       if (!resolvedTestCaseId && execution.testCaseId) {
         resolvedTestCaseId = execution.testCaseId;
@@ -134,15 +149,20 @@ export class BugsService {
       });
     });
 
-    // Notify assignee if assigned to someone else
+    // Notify assignee if assigned to someone else (safe execution)
     if (bug.assigneeId && bug.assigneeId !== user.sub) {
-      await this.notificationsService.create({
-        userId: bug.assigneeId,
-        title: `Bạn được giao xử lý lỗi mới [${bug.code}]`,
-        message: `Bạn đã được giao xử lý lỗi: "${bug.title}" trong dự án ${project.name}.`,
-        type: NotificationType.BUG_ASSIGNED,
-        link: `/projects/${projectId}/bugs?bugId=${bug.id}`,
-      });
+      try {
+        await this.notificationsService.create({
+          userId: bug.assigneeId,
+          projectId,
+          title: `Bạn được giao xử lý lỗi mới [${bug.code}]`,
+          message: `Bạn đã được giao xử lý lỗi: "${bug.title}" trong dự án ${project.name}.`,
+          type: NotificationType.BUG_ASSIGNED,
+          link: `/projects/${projectId}/bugs?bugId=${bug.id}`,
+        });
+      } catch (err) {
+        console.error('Failed to send notification for bug assignment', err);
+      }
     }
 
     return bug;
@@ -247,6 +267,16 @@ export class BugsService {
     });
     if (!existing) throw new NotFoundException('Không tìm thấy thông tin lỗi');
 
+    // Validate assignee is a project member if provided
+    if (dto.assigneeId) {
+      const member = await this.prisma.projectMember.findUnique({
+        where: { projectId_userId: { projectId, userId: dto.assigneeId } },
+      });
+      if (!member) {
+        throw new BadRequestException('Người được giao xử lý không phải là thành viên của dự án này');
+      }
+    }
+
     const updateData: Prisma.BugUpdateInput = {};
 
     if (dto.title !== undefined) updateData.title = dto.title.trim();
@@ -257,12 +287,35 @@ export class BugsService {
     }
 
     if (dto.status !== undefined && dto.status !== existing.status) {
+      const role = await this.assertProjectMember(projectId, user);
+      const isTesterOrQALead =
+        user.systemRole === SystemRole.ADMIN ||
+        role === ProjectRole.QA_LEAD ||
+        role === ProjectRole.TESTER;
+
+      // Developer cannot arbitrarily close/verify bugs without QA/Tester re-testing
+      if ((dto.status === BugStatus.VERIFIED || dto.status === BugStatus.CLOSED) && !isTesterOrQALead) {
+        throw new ForbiddenException(
+          'Chỉ Tester hoặc QA Lead mới có quyền xác minh (VERIFIED) hoặc đóng (CLOSED) lỗi sau khi Developer sửa xong',
+        );
+      }
+
+      if (dto.status === BugStatus.REOPENED && !isTesterOrQALead) {
+        throw new ForbiddenException(
+          'Chỉ Tester hoặc QA Lead mới có quyền mở lại (REOPENED) lỗi khi ca kiểm thử thất bại',
+        );
+      }
+
       updateData.status = dto.status;
       if (dto.status === BugStatus.RESOLVED) {
         updateData.resolvedAt = new Date();
-      } else if (dto.status === BugStatus.CLOSED) {
+      } else if (dto.status === BugStatus.CLOSED || dto.status === BugStatus.VERIFIED) {
         updateData.closedAt = new Date();
-      } else if (dto.status === BugStatus.OPEN || dto.status === BugStatus.IN_PROGRESS) {
+      } else if (
+        dto.status === BugStatus.OPEN ||
+        dto.status === BugStatus.IN_PROGRESS ||
+        dto.status === BugStatus.REOPENED
+      ) {
         updateData.resolvedAt = null;
         updateData.closedAt = null;
       }
@@ -288,30 +341,42 @@ export class BugsService {
       },
     });
 
-    // Notify new assignee if changed
+    // Notify new assignee if changed (safely)
     if (dto.assigneeId && dto.assigneeId !== existing.assigneeId && dto.assigneeId !== user.sub) {
-      await this.notificationsService.create({
-        userId: dto.assigneeId,
-        title: `Bạn được giao xử lý lỗi [${updated.code}]`,
-        message: `Bạn đã được giao xử lý lỗi "${updated.title}".`,
-        type: NotificationType.BUG_ASSIGNED,
-        link: `/projects/${projectId}/bugs?bugId=${updated.id}`,
-      });
+      try {
+        await this.notificationsService.create({
+          userId: dto.assigneeId,
+          projectId,
+          title: `Bạn được giao xử lý lỗi [${updated.code}]`,
+          message: `Bạn đã được giao xử lý lỗi "${updated.title}".`,
+          type: NotificationType.BUG_ASSIGNED,
+          link: `/projects/${projectId}/bugs?bugId=${updated.id}`,
+        });
+      } catch (err) {
+        console.error('Failed to send bug assignment notification', err);
+      }
     }
 
-    // Notify creator if status changed and user is not creator
-    if (
-      dto.status &&
-      dto.status !== existing.status &&
-      updated.createdById !== user.sub
-    ) {
-      await this.notificationsService.create({
-        userId: updated.createdById,
-        title: `Lỗi [${updated.code}] đã cập nhật trạng thái`,
-        message: `Trạng thái lỗi "${updated.title}" đã được chuyển sang ${updated.status}.`,
-        type: NotificationType.BUG_STATUS_CHANGED,
-        link: `/projects/${projectId}/bugs?bugId=${updated.id}`,
-      });
+    // Notify creator & assignee if status changed (safely)
+    if (dto.status && dto.status !== existing.status) {
+      const recipients = new Set<string>();
+      if (updated.assigneeId && updated.assigneeId !== user.sub) recipients.add(updated.assigneeId);
+      if (updated.createdById && updated.createdById !== user.sub) recipients.add(updated.createdById);
+
+      for (const recId of recipients) {
+        try {
+          await this.notificationsService.create({
+            userId: recId,
+            projectId,
+            title: `Lỗi [${updated.code}] đã cập nhật trạng thái sang ${updated.status}`,
+            message: `${user.email} đã cập nhật trạng thái lỗi "${updated.title}" sang ${updated.status}.`,
+            type: NotificationType.BUG_STATUS_CHANGED,
+            link: `/projects/${projectId}/bugs?bugId=${updated.id}`,
+          });
+        } catch (err) {
+          console.error('Failed to send bug status change notification', err);
+        }
+      }
     }
 
     return updated;
@@ -351,11 +416,13 @@ export class BugsService {
       this.prisma.bug.count({ where: { projectId } }),
     ]);
 
-    const byStatus = {
+    const byStatus: Record<BugStatus, number> = {
       OPEN: 0,
       IN_PROGRESS: 0,
       RESOLVED: 0,
+      VERIFIED: 0,
       CLOSED: 0,
+      REOPENED: 0,
     };
     statusCounts.forEach((s) => {
       byStatus[s.status] = s._count.id;
@@ -375,8 +442,11 @@ export class BugsService {
       total,
       byStatus,
       bySeverity,
-      activeBugs: byStatus.OPEN + byStatus.IN_PROGRESS,
-      resolvedRate: total > 0 ? Math.round(((byStatus.RESOLVED + byStatus.CLOSED) / total) * 100) : 100,
+      activeBugs: byStatus.OPEN + byStatus.IN_PROGRESS + byStatus.REOPENED,
+      resolvedRate:
+        total > 0
+          ? Math.round(((byStatus.RESOLVED + byStatus.VERIFIED + byStatus.CLOSED) / total) * 100)
+          : 100,
     };
   }
 }

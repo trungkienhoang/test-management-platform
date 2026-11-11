@@ -188,8 +188,14 @@ export const BugModal: React.FC<BugModalProps> = ({
               >
                 <option value="OPEN">Mở (Open)</option>
                 <option value="IN_PROGRESS">Đang xử lý (In Progress)</option>
-                <option value="RESOLVED">Đã sửa (Resolved)</option>
-                <option value="CLOSED">Đã đóng (Closed)</option>
+                {initialBug && (
+                  <>
+                    <option value="RESOLVED">Đã sửa (Resolved)</option>
+                    <option value="VERIFIED">Đã xác minh (Verified)</option>
+                    <option value="CLOSED">Đã đóng (Closed)</option>
+                    <option value="REOPENED">Mở lại (Reopened)</option>
+                  </>
+                )}
               </select>
             </div>
           </div>

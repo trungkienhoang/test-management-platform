@@ -73,20 +73,12 @@ export class TestExecutionsService {
 
     // If run is completed, strictly lock all data (Read-only)
     if (execution.testRun.status === TestRunStatus.COMPLETED) {
-      throw new BadRequestException('Đợt kiểm thử này đã được chốt và đóng (COMPLETED). Toàn bộ dữ liệu đã được khóa chỉ đọc (Read-only).');
+      throw new ForbiddenException('Đợt kiểm thử này đã được chốt và đóng (COMPLETED). Toàn bộ dữ liệu đã được khóa chỉ đọc (Read-only).');
     }
 
-    // If run is in review, lock changes from non-QA members
+    // If run is in review, lock changes from everyone until reworked
     if (execution.testRun.status === TestRunStatus.IN_REVIEW) {
-      const isQAOrAdmin =
-        user.systemRole === SystemRole.ADMIN ||
-        (await this.prisma.projectMember.findUnique({
-          where: { projectId_userId: { projectId, userId: user.sub } },
-        }))?.role === ProjectRole.QA_LEAD;
-
-      if (!isQAOrAdmin) {
-        throw new BadRequestException('Đợt kiểm thử đang ở trạng thái Chờ QA rà soát (IN_REVIEW). Vui lòng đợi QA Lead phê duyệt hoặc yêu cầu làm lại.');
-      }
+      throw new ForbiddenException('Đợt kiểm thử đang ở trạng thái Chờ QA rà soát (IN_REVIEW). Kết quả kiểm thử tạm thời bị khóa cho đến khi QA Lead phê duyệt hoặc yêu cầu làm lại.');
     }
 
     return this.prisma.$transaction(async (tx) => {

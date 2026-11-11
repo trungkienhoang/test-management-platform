@@ -58,11 +58,17 @@ export const TestRunnerPage: React.FC = () => {
       .catch(() => setMembers([]));
   }, [projectId]);
 
+  // Status flags
+  const isCompleted = run?.status === 'COMPLETED';
+  const isInReview = run?.status === 'IN_REVIEW';
+
   const currentUserMember = members.find((m) => m.userId === user?.id);
   const isQALeadOrAdmin =
-    user?.systemRole === 'ADMIN' ||
-    currentUserMember?.role === 'QA_LEAD' ||
-    run?.createdById === user?.id;
+    run?.permissions?.isQALeadOrAdmin ??
+    (user?.systemRole === 'ADMIN' || currentUserMember?.role === 'QA_LEAD');
+  const canApprove = run?.permissions?.canApprove ?? (isInReview && isQALeadOrAdmin);
+  const canRequestRework = run?.permissions?.canRequestRework ?? (isInReview && isQALeadOrAdmin);
+  const canSubmitForReview = run?.permissions?.canSubmitForReview ?? (!isCompleted && !isInReview);
 
   // Fetch run and execution details
   const fetchRunDetails = async () => {
@@ -99,10 +105,6 @@ export const TestRunnerPage: React.FC = () => {
   useEffect(() => {
     fetchRunDetails();
   }, [projectId, runId]);
-
-  // Status flags
-  const isCompleted = run?.status === 'COMPLETED';
-  const isInReview = run?.status === 'IN_REVIEW';
 
   // Filtered executions
   const filteredExecutions = executions.filter((exec) => {
@@ -157,7 +159,7 @@ export const TestRunnerPage: React.FC = () => {
     }));
   };
 
-  // Submit execution result (Tester)
+  // Submit execution result (Tester) for PASS, BLOCKED, SKIPPED
   const handleRecordResult = async (status: TestExecutionStatus, autoAdvance = true) => {
     if (!activeExecution || isCompleted || isInReview) return;
     setSubmitting(true);
@@ -179,10 +181,7 @@ export const TestRunnerPage: React.FC = () => {
         prev.map((e) => (e.id === activeExecution.id ? { ...e, ...updated } : e)),
       );
 
-      // If FAILED, suggest opening bug modal
-      if (status === 'FAILED') {
-        openBugModalForExecution(activeExecution, actualResult);
-      } else if (autoAdvance && currentIndex < executions.length - 1) {
+      if (autoAdvance && currentIndex < executions.length - 1) {
         setCurrentIndex(currentIndex + 1);
       }
 
@@ -219,6 +218,7 @@ export const TestRunnerPage: React.FC = () => {
     if (!activeExecution) return;
     setCreatingBug(true);
     try {
+      // 1. Create bug
       const res = await apiClient.post(`/projects/${projectId}/bugs`, {
         title: bugTitle.trim(),
         description: bugDesc.trim(),
@@ -228,20 +228,41 @@ export const TestRunnerPage: React.FC = () => {
       });
 
       const newBug: Bug = res.data;
+
+      // 2. Mark execution as FAILED and persist actualResult & duration
+      const payload = {
+        status: 'FAILED',
+        actualResult: actualResult.trim() || undefined,
+        stepResults: stepChecklist,
+        executionDurationMs: timerSeconds * 1000,
+      };
+
+      const execRes = await apiClient.patch(
+        `/projects/${projectId}/test-runs/${runId}/executions/${activeExecution.id}`,
+        payload,
+      );
+      const updated = execRes.data;
+
       setExecutions((prev) =>
         prev.map((e) =>
-          e.id === activeExecution.id ? { ...e, bugs: [...(e.bugs || []), newBug] } : e,
+          e.id === activeExecution.id
+            ? { ...e, ...updated, bugs: [...(e.bugs || []), newBug] }
+            : e,
         ),
       );
 
       setIsBugModalOpen(false);
-      alert(`Đã tạo và liên kết thành công lỗi [${newBug.code}]!`);
+      alert(`Đã ghi nhận kết quả THẤT BẠI (FAIL) và liên kết lỗi [${newBug.code}] thành công!`);
 
       if (currentIndex < executions.length - 1) {
         setCurrentIndex(currentIndex + 1);
       }
+
+      // Re-fetch run to update stats
+      const runRes = await apiClient.get(`/projects/${projectId}/test-runs/${runId}`);
+      setRun(runRes.data);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Có lỗi xảy ra khi tạo bug');
+      alert(err.response?.data?.message || 'Có lỗi xảy ra khi tạo bug và lưu kết quả');
     } finally {
       setCreatingBug(false);
     }
@@ -427,7 +448,7 @@ export const TestRunnerPage: React.FC = () => {
               Hãy kiểm tra kỹ các ca FAIL / BLOCKED và các Bug liên kết trước khi chốt.
             </span>
           </div>
-          {isQALeadOrAdmin && (
+          {canApprove && (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsReworkModalOpen(true)}
@@ -879,15 +900,17 @@ export const TestRunnerPage: React.FC = () => {
                   </button>
                 ) : isInReview ? (
                   /* Review Mode for QA Lead */
-                  isQALeadOrAdmin ? (
+                  canApprove ? (
                     <>
-                      <button
-                        onClick={() => setIsReworkModalOpen(true)}
-                        disabled={actionLoading}
-                        className="px-4 py-2.5 bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold rounded-xl shadow-2xs transition flex items-center gap-1.5 disabled:opacity-50"
-                      >
-                        <span>❌</span> Yêu cầu làm lại
-                      </button>
+                      {canRequestRework && (
+                        <button
+                          onClick={() => setIsReworkModalOpen(true)}
+                          disabled={actionLoading}
+                          className="px-4 py-2.5 bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold rounded-xl shadow-2xs transition flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          <span>❌</span> Yêu cầu làm lại
+                        </button>
+                      )}
                       <button
                         onClick={handleApproveAndClose}
                         disabled={actionLoading}
@@ -913,9 +936,10 @@ export const TestRunnerPage: React.FC = () => {
                     </button>
 
                     <button
-                      onClick={() => handleRecordResult('FAILED')}
+                      onClick={() => openBugModalForExecution(activeExecution, actualResult)}
                       disabled={submitting}
                       className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 disabled:opacity-50"
+                      title="Bắt buộc tạo hoặc liên kết Bug khi đánh dấu Thất bại"
                     >
                       <span>✗</span> THẤT BẠI (FAIL) & TẠO BUG
                     </button>
@@ -936,16 +960,20 @@ export const TestRunnerPage: React.FC = () => {
                       <span>⏭</span> BỎ QUA
                     </button>
 
-                    <div className="h-6 w-px bg-slate-300 mx-1" />
+                    {canSubmitForReview && (
+                      <>
+                        <div className="h-6 w-px bg-slate-300 mx-1" />
 
-                    <button
-                      onClick={handleSubmitForReview}
-                      disabled={submitting || actionLoading}
-                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 disabled:opacity-50"
-                      title="Gửi toàn bộ kết quả kiểm thử cho QA Lead rà soát"
-                    >
-                      <span>📤</span> Gửi QA Duyệt
-                    </button>
+                        <button
+                          onClick={handleSubmitForReview}
+                          disabled={submitting || actionLoading}
+                          className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 disabled:opacity-50"
+                          title="Gửi toàn bộ kết quả kiểm thử cho QA Lead rà soát"
+                        >
+                          <span>📤</span> Gửi QA Duyệt
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
               </div>
@@ -1040,7 +1068,7 @@ export const TestRunnerPage: React.FC = () => {
                 disabled={creatingBug}
                 className="px-5 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition disabled:opacity-50"
               >
-                {creatingBug ? 'Đang tạo Bug...' : 'Lưu Bug & Liên kết'}
+                {creatingBug ? 'Đang tạo Bug & lưu kết quả...' : 'Xác nhận FAIL & Lưu Bug'}
               </button>
             </div>
           </div>

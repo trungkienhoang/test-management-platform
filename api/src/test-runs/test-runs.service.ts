@@ -223,6 +223,7 @@ export class TestRunsService {
         include: {
           createdBy: { select: { id: true, fullName: true, email: true } },
           assignedTo: { select: { id: true, fullName: true, email: true } },
+          parentRun: { select: { id: true, name: true } },
           executions: {
             select: { status: true },
           },
@@ -259,6 +260,7 @@ export class TestRunsService {
       include: {
         createdBy: { select: { id: true, fullName: true, email: true } },
         assignedTo: { select: { id: true, fullName: true, email: true } },
+        parentRun: { select: { id: true, name: true } },
         executions: {
           orderBy: [{ testCaseCode: 'asc' }],
           include: {
@@ -291,9 +293,35 @@ export class TestRunsService {
 
     const stats = this.computeRunStats(run.executions);
 
+    // Compute dynamic user permissions for this test run
+    const member = await this.prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId, userId: user.sub } },
+      select: { role: true },
+    });
+    const memberRole = user.systemRole === SystemRole.ADMIN ? ProjectRole.QA_LEAD : member?.role;
+    const isQALead = user.systemRole === SystemRole.ADMIN || memberRole === ProjectRole.QA_LEAD;
+    const canWrite =
+      isQALead || memberRole === ProjectRole.TESTER || memberRole === ProjectRole.DEVELOPER;
+    const isAssignee = run.assignedToId === user.sub;
+    const isCompleted = run.status === TestRunStatus.COMPLETED;
+    const isInReview = run.status === TestRunStatus.IN_REVIEW;
+
+    const permissions = {
+      isQALeadOrAdmin: isQALead,
+      canExecute: !isCompleted && !isInReview && (canWrite || isAssignee),
+      canSubmitForReview: !isCompleted && !isInReview && canWrite,
+      canReview: isInReview && isQALead,
+      canApprove: isInReview && isQALead,
+      canRequestRework: isInReview && isQALead,
+      canRetest: isCompleted && canWrite,
+      canEdit: !isCompleted && canWrite,
+      canDelete: !isCompleted && isQALead,
+    };
+
     return {
       ...run,
       stats,
+      permissions,
     };
   }
 
@@ -308,21 +336,11 @@ export class TestRunsService {
       throw new NotFoundException('Đợt kiểm thử không tồn tại trong dự án');
     }
 
-    // Only QA Lead can close / complete a run
-    if (dto.status === TestRunStatus.COMPLETED && current.status !== TestRunStatus.COMPLETED) {
-      await this.assertCanManage(projectId, user);
-    }
-
-    let startedAt = current.startedAt;
-    if (dto.status === TestRunStatus.IN_PROGRESS && !startedAt) {
-      startedAt = new Date();
-    }
-
-    let completedAt = current.completedAt;
-    if (dto.status === TestRunStatus.COMPLETED) {
-      completedAt = new Date();
-    } else if (dto.status === TestRunStatus.OPEN || dto.status === TestRunStatus.IN_PROGRESS) {
-      completedAt = null;
+    // Lock update if run is completed
+    if (current.status === TestRunStatus.COMPLETED) {
+      throw new ForbiddenException(
+        'Đợt kiểm thử đã hoàn thành (COMPLETED) và khóa chỉ đọc, không thể chỉnh sửa thông tin',
+      );
     }
 
     const updated = await this.prisma.testRun.update({
@@ -331,9 +349,6 @@ export class TestRunsService {
         ...(dto.name !== undefined && { name: dto.name.trim() }),
         ...(dto.description !== undefined && { description: dto.description?.trim() }),
         ...(dto.assignedToId !== undefined && { assignedToId: dto.assignedToId || null }),
-        ...(dto.status !== undefined && { status: dto.status }),
-        startedAt,
-        completedAt,
       },
     });
 
@@ -343,14 +358,18 @@ export class TestRunsService {
       dto.assignedToId !== current.assignedToId &&
       dto.assignedToId !== user.sub
     ) {
-      await this.notificationsService.create({
-        userId: dto.assignedToId,
-        projectId,
-        title: 'Bạn được gán Test Run',
-        message: `Bạn được giao thực thi đợt kiểm thử "${updated.name}"`,
-        type: NotificationType.TEST_RUN_ASSIGNED,
-        link: `/projects/${projectId}/test-runs/${updated.id}/runner`,
-      });
+      try {
+        await this.notificationsService.create({
+          userId: dto.assignedToId,
+          projectId,
+          title: 'Bạn được gán Test Run',
+          message: `Bạn được giao thực thi đợt kiểm thử "${updated.name}"`,
+          type: NotificationType.TEST_RUN_ASSIGNED,
+          link: `/projects/${projectId}/test-runs/${updated.id}/runner`,
+        });
+      } catch (err) {
+        console.error('Failed to send assignment notification', err);
+      }
     }
 
     return this.findOne(projectId, id, user);
@@ -367,6 +386,12 @@ export class TestRunsService {
       throw new NotFoundException('Đợt kiểm thử không tồn tại trong dự án');
     }
 
+    if (current.status === TestRunStatus.COMPLETED) {
+      throw new ForbiddenException(
+        'Không thể xóa đợt kiểm thử đã hoàn thành (COMPLETED) để bảo toàn tính toàn vẹn của lịch sử và báo cáo kiểm thử',
+      );
+    }
+
     return this.prisma.testRun.delete({
       where: { id },
     });
@@ -375,11 +400,14 @@ export class TestRunsService {
   // ─── REVIEW & SIGN-OFF WORKFLOW ──────────────────────────────────────────────
 
   async submitForReview(projectId: string, id: string, user: JwtPayload) {
-    await this.assertProjectMember(projectId, user);
+    await this.assertCanWrite(projectId, user);
 
     const run = await this.prisma.testRun.findFirst({
       where: { id, projectId },
-      include: { project: { select: { name: true } } },
+      include: {
+        project: { select: { name: true } },
+        executions: { select: { id: true, status: true } },
+      },
     });
 
     if (!run) {
@@ -390,6 +418,21 @@ export class TestRunsService {
       throw new BadRequestException('Đợt kiểm thử đã hoàn thành và đóng, không thể gửi duyệt');
     }
 
+    if (run.status === TestRunStatus.IN_REVIEW) {
+      throw new BadRequestException('Đợt kiểm thử hiện đang ở trạng thái Chờ QA duyệt');
+    }
+
+    if (!run.executions || run.executions.length === 0) {
+      throw new BadRequestException('Đợt kiểm thử chưa có ca kiểm thử nào');
+    }
+
+    const untestedCount = run.executions.filter((e) => e.status === TestExecutionStatus.UNTESTED).length;
+    if (untestedCount > 0) {
+      throw new BadRequestException(
+        `Không thể gửi duyệt: Còn ${untestedCount} ca kiểm thử chưa thực hiện (UNTESTED). Vui lòng hoàn thành toàn bộ ca kiểm thử trước khi gửi QA Lead rà soát.`,
+      );
+    }
+
     await this.prisma.testRun.update({
       where: { id },
       data: {
@@ -398,7 +441,7 @@ export class TestRunsService {
       },
     });
 
-    // Notify all QA Leads in the project
+    // Notify all QA Leads in the project safely
     const qaLeads = await this.prisma.projectMember.findMany({
       where: { projectId, role: ProjectRole.QA_LEAD },
       select: { userId: true },
@@ -406,14 +449,18 @@ export class TestRunsService {
 
     for (const lead of qaLeads) {
       if (lead.userId !== user.sub) {
-        await this.notificationsService.create({
-          userId: lead.userId,
-          projectId,
-          title: `Đợt kiểm thử chờ duyệt: [${run.name}]`,
-          message: `${user.email} đã hoàn thành kiểm thử và gửi yêu cầu rà soát đợt chạy "${run.name}".`,
-          type: NotificationType.TEST_RUN_REVIEW_REQUESTED,
-          link: `/projects/${projectId}/test-runs/${run.id}/runner`,
-        });
+        try {
+          await this.notificationsService.create({
+            userId: lead.userId,
+            projectId,
+            title: `Đợt kiểm thử chờ duyệt: [${run.name}]`,
+            message: `${user.email} đã hoàn thành kiểm thử và gửi yêu cầu rà soát đợt chạy "${run.name}".`,
+            type: NotificationType.TEST_RUN_REVIEW_REQUESTED,
+            link: `/projects/${projectId}/test-runs/${run.id}/runner`,
+          });
+        } catch (err) {
+          console.error('Failed to notify QA Lead', err);
+        }
       }
     }
 
@@ -422,6 +469,10 @@ export class TestRunsService {
 
   async requestRework(projectId: string, id: string, reason: string, user: JwtPayload) {
     await this.assertCanManage(projectId, user);
+
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('Vui lòng cung cấp lý do cụ thể yêu cầu làm lại');
+    }
 
     const run = await this.prisma.testRun.findFirst({
       where: { id, projectId },
@@ -432,8 +483,8 @@ export class TestRunsService {
       throw new NotFoundException('Đợt kiểm thử không tồn tại trong dự án');
     }
 
-    if (run.status === TestRunStatus.COMPLETED) {
-      throw new BadRequestException('Đợt kiểm thử đã hoàn thành và đóng, không thể yêu cầu làm lại');
+    if (run.status !== TestRunStatus.IN_REVIEW) {
+      throw new BadRequestException('Chỉ có thể yêu cầu làm lại khi đợt kiểm thử đang ở trạng thái Chờ QA duyệt (IN_REVIEW)');
     }
 
     await this.prisma.testRun.update({
@@ -444,20 +495,24 @@ export class TestRunsService {
       },
     });
 
-    // Notify assignee and creator
+    // Notify assignee and creator safely
     const recipients = new Set<string>();
     if (run.assignedToId && run.assignedToId !== user.sub) recipients.add(run.assignedToId);
     if (run.createdById && run.createdById !== user.sub) recipients.add(run.createdById);
 
     for (const rId of recipients) {
-      await this.notificationsService.create({
-        userId: rId,
-        projectId,
-        title: `Yêu cầu làm lại đợt kiểm thử: [${run.name}]`,
-        message: `QA Lead yêu cầu làm lại với lý do: "${reason.trim()}".`,
-        type: NotificationType.TEST_RUN_REWORK_REQUESTED,
-        link: `/projects/${projectId}/test-runs/${run.id}/runner`,
-      });
+      try {
+        await this.notificationsService.create({
+          userId: rId,
+          projectId,
+          title: `Yêu cầu làm lại đợt kiểm thử: [${run.name}]`,
+          message: `QA Lead yêu cầu làm lại với lý do: "${reason.trim()}".`,
+          type: NotificationType.TEST_RUN_REWORK_REQUESTED,
+          link: `/projects/${projectId}/test-runs/${run.id}/runner`,
+        });
+      } catch (err) {
+        console.error('Failed to notify rework recipient', err);
+      }
     }
 
     return this.findOne(projectId, id, user);
@@ -468,11 +523,43 @@ export class TestRunsService {
 
     const run = await this.prisma.testRun.findFirst({
       where: { id, projectId },
-      include: { project: { select: { name: true } } },
+      include: {
+        project: { select: { name: true } },
+        executions: {
+          select: {
+            id: true,
+            status: true,
+            testCaseCode: true,
+            bugs: { select: { id: true } },
+          },
+        },
+      },
     });
 
     if (!run) {
       throw new NotFoundException('Đợt kiểm thử không tồn tại trong dự án');
+    }
+
+    if (run.status !== TestRunStatus.IN_REVIEW) {
+      throw new BadRequestException(
+        'Đợt kiểm thử phải được gửi duyệt (trạng thái IN_REVIEW) trước khi QA Lead phê duyệt và chốt.',
+      );
+    }
+
+    const untested = run.executions.filter((e) => e.status === TestExecutionStatus.UNTESTED);
+    if (untested.length > 0) {
+      throw new BadRequestException(
+        `Không thể chốt đợt kiểm thử: Còn ${untested.length} ca kiểm thử chưa thực hiện (UNTESTED).`,
+      );
+    }
+
+    const failedWithoutBug = run.executions.filter(
+      (e) => e.status === TestExecutionStatus.FAILED && (!e.bugs || e.bugs.length === 0),
+    );
+    if (failedWithoutBug.length > 0) {
+      throw new BadRequestException(
+        `Không thể chốt đợt kiểm thử: Có ${failedWithoutBug.length} ca kiểm thử bị THẤT BẠI (FAILED) nhưng chưa có Bug nào được liên kết (${failedWithoutBug.map((e) => e.testCaseCode).join(', ')}). Vui lòng yêu cầu bổ sung Bug trước khi chốt.`,
+      );
     }
 
     await this.prisma.testRun.update({
@@ -484,20 +571,24 @@ export class TestRunsService {
       },
     });
 
-    // Notify assignee and creator
+    // Notify assignee and creator safely
     const recipients = new Set<string>();
     if (run.assignedToId && run.assignedToId !== user.sub) recipients.add(run.assignedToId);
     if (run.createdById && run.createdById !== user.sub) recipients.add(run.createdById);
 
     for (const rId of recipients) {
-      await this.notificationsService.create({
-        userId: rId,
-        projectId,
-        title: `Đợt kiểm thử đã hoàn thành: [${run.name}]`,
-        message: `QA Lead đã rà soát và chính thức chốt đợt kiểm thử "${run.name}". Toàn bộ kết quả đã được khóa chỉ đọc.`,
-        type: NotificationType.TEST_RUN_COMPLETED,
-        link: `/projects/${projectId}/test-runs/${run.id}/runner`,
-      });
+      try {
+        await this.notificationsService.create({
+          userId: rId,
+          projectId,
+          title: `Đợt kiểm thử đã hoàn thành: [${run.name}]`,
+          message: `QA Lead đã rà soát và chính thức chốt đợt kiểm thử "${run.name}". Toàn bộ kết quả đã được khóa chỉ đọc.`,
+          type: NotificationType.TEST_RUN_COMPLETED,
+          link: `/projects/${projectId}/test-runs/${run.id}/runner`,
+        });
+      } catch (err) {
+        console.error('Failed to notify complete recipient', err);
+      }
     }
 
     return this.findOne(projectId, id, user);
@@ -532,6 +623,7 @@ export class TestRunsService {
       const newRun = await tx.testRun.create({
         data: {
           projectId,
+          parentRunId: originalRun.id,
           name: `[Retest] ${originalRun.name}`,
           description: `Đợt chạy lại (Retest) cho ${originalRun.executions.length} ca kiểm thử FAILED/BLOCKED từ đợt: "${originalRun.name}"`,
           createdById: user.sub,
@@ -559,16 +651,20 @@ export class TestRunsService {
       return newRun;
     });
 
-    // Notify assignee if assigned to another user
+    // Notify assignee safely
     if (retestRun.assignedToId && retestRun.assignedToId !== user.sub) {
-      await this.notificationsService.create({
-        userId: retestRun.assignedToId,
-        projectId,
-        title: 'Bạn được gán đợt Retest mới',
-        message: `Bạn được giao thực thi đợt chạy lại "${retestRun.name}" gồm ${originalRun.executions.length} ca test.`,
-        type: NotificationType.TEST_RUN_ASSIGNED,
-        link: `/projects/${projectId}/test-runs/${retestRun.id}/runner`,
-      });
+      try {
+        await this.notificationsService.create({
+          userId: retestRun.assignedToId,
+          projectId,
+          title: 'Bạn được gán đợt Retest mới',
+          message: `Bạn được giao thực thi đợt chạy lại "${retestRun.name}" gồm ${originalRun.executions.length} ca test.`,
+          type: NotificationType.TEST_RUN_ASSIGNED,
+          link: `/projects/${projectId}/test-runs/${retestRun.id}/runner`,
+        });
+      } catch (err) {
+        console.error('Failed to notify retest recipient', err);
+      }
     }
 
     return this.findOne(projectId, retestRun.id, user);

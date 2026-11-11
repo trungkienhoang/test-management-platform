@@ -52,22 +52,14 @@ export class TestCasesService {
 
   // ─── CODE GENERATION ────────────────────────────────────────────────────────
 
-  private async generateNextCode(projectId: string): Promise<string> {
-    const allCodes = await this.prisma.testCase.findMany({
-      where: { projectId },
-      select: { code: true },
+  private async generateNextCode(tx: any, projectId: string): Promise<string> {
+    const updated = await tx.project.update({
+      where: { id: projectId },
+      data: { testCaseSeq: { increment: 1 } },
+      select: { testCaseSeq: true },
     });
 
-    let maxNum = 0;
-    allCodes.forEach((tc) => {
-      const match = tc.code.match(/TC-(\d+)/i);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxNum) maxNum = num;
-      }
-    });
-
-    return `TC-${maxNum + 1}`;
+    return `TC-${updated.testCaseSeq}`;
   }
 
   // ─── CRUD ───────────────────────────────────────────────────────────────────
@@ -84,10 +76,10 @@ export class TestCasesService {
       }
     }
 
-    const code = await this.generateNextCode(projectId);
     const stepsJson = (dto.steps || []) as any;
 
     return this.prisma.$transaction(async (tx) => {
+      const code = await this.generateNextCode(tx, projectId);
       const testCase = await tx.testCase.create({
         data: {
           projectId,
@@ -539,9 +531,8 @@ export class TestCasesService {
       }
 
       try {
-        const code = await this.generateNextCode(projectId);
-
         await this.prisma.$transaction(async (tx) => {
+          const code = await this.generateNextCode(tx, projectId);
           const tc = await tx.testCase.create({
             data: {
               projectId,
