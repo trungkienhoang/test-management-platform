@@ -82,7 +82,7 @@ export class TestSuitesService {
       where: {
         projectId,
         parentId: dto.parentId || null,
-        name: { equals: dto.name.trim(), mode: 'insensitive' },
+        name: { equals: dto.name.trim() },
       },
     });
     if (duplicate) {
@@ -224,7 +224,7 @@ export class TestSuitesService {
         where: {
           projectId,
           parentId: targetParentId,
-          name: { equals: dto.name.trim(), mode: 'insensitive' },
+          name: { equals: dto.name.trim() },
           id: { not: id },
         },
       });

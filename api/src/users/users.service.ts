@@ -58,8 +58,8 @@ export class UsersService {
     if (options.search) {
       const s = options.search.trim();
       where.OR = [
-        { fullName: { contains: s, mode: 'insensitive' } },
-        { email: { contains: s, mode: 'insensitive' } },
+        { fullName: { contains: s } },
+        { email: { contains: s } },
       ];
     }
 
@@ -96,8 +96,8 @@ export class UsersService {
 
     if (trimmed) {
       where.OR = [
-        { fullName: { contains: trimmed, mode: 'insensitive' } },
-        { email: { contains: trimmed, mode: 'insensitive' } },
+        { fullName: { contains: trimmed } },
+        { email: { contains: trimmed } },
       ];
     }
 

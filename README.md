@@ -37,7 +37,7 @@ Hệ thống web quản lý kiểm thử phần mềm với 14 chức năng MVP 
 | Ngôn ngữ | TypeScript |
 | Backend | NestJS, REST API, OpenAPI |
 | Frontend | React + TypeScript, Recharts |
-| Database | PostgreSQL + Prisma ORM |
+| Database | MySQL 8 + Prisma ORM |
 | Testing | Jest, Supertest, Playwright, k6, OWASP ZAP |
 | Infra | Docker Compose, GitHub Actions |
 

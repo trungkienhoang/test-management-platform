@@ -207,10 +207,10 @@ export class TestRunsService {
     if (query.search) {
       const s = query.search.trim();
       where.OR = [
-        { name: { contains: s, mode: 'insensitive' } },
-        { description: { contains: s, mode: 'insensitive' } },
-        { assignedTo: { fullName: { contains: s, mode: 'insensitive' } } },
-        { assignedTo: { email: { contains: s, mode: 'insensitive' } } },
+        { name: { contains: s } },
+        { description: { contains: s } },
+        { assignedTo: { fullName: { contains: s } } },
+        { assignedTo: { email: { contains: s } } },
       ];
     }
 

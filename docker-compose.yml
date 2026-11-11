@@ -1,20 +1,22 @@
 version: '3.9'
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: tmp_postgres
+  mysql:
+    image: mysql:8.0
+    container_name: tmp_mysql
     restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-tmp_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tmp_password}
-      POSTGRES_DB: ${POSTGRES_DB:-test_management}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-tmp_root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-test_management}
+      MYSQL_USER: ${MYSQL_USER:-tmp_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-tmp_password}
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tmp_user} -d ${POSTGRES_DB:-test_management}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ptmp_root_password"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,7 +30,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-tmp_user}:${POSTGRES_PASSWORD:-tmp_password}@postgres:5432/${POSTGRES_DB:-test_management}
+      DATABASE_URL: mysql://${MYSQL_USER:-tmp_user}:${MYSQL_PASSWORD:-tmp_password}@mysql:3306/${MYSQL_DATABASE:-test_management}
       NODE_ENV: development
     ports:
       - "3001:3001"
@@ -36,7 +38,7 @@ services:
       - ./api:/app
       - /app/node_modules
     depends_on:
-      postgres:
+      mysql:
         condition: service_healthy
 
   web:
@@ -56,4 +58,4 @@ services:
       - api
 
 volumes:
-  postgres_data:
+  mysql_data:

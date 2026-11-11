@@ -113,7 +113,7 @@ export class TestCasesService {
           steps: stepsJson,
           priority: testCase.priority,
           status: testCase.status,
-          tags: testCase.tags,
+          tags: (testCase.tags as any) ?? [],
           changedById: user.sub,
           changeReason: 'Khởi tạo Test Case',
         },
@@ -157,15 +157,15 @@ export class TestCasesService {
     }
 
     if (tag) {
-      where.tags = { has: tag.trim() };
+      where.tags = { array_contains: tag.trim() };
     }
 
     if (search && search.trim()) {
       const term = search.trim();
       where.OR = [
-        { title: { contains: term, mode: 'insensitive' } },
-        { description: { contains: term, mode: 'insensitive' } },
-        { code: { contains: term, mode: 'insensitive' } },
+        { title: { contains: term } },
+        { description: { contains: term } },
+        { code: { contains: term } },
       ];
     }
 
@@ -269,7 +269,7 @@ export class TestCasesService {
           steps: updated.steps as any,
           priority: updated.priority,
           status: updated.status,
-          tags: updated.tags,
+          tags: (updated.tags as any) ?? [],
           changedById: user.sub,
           changeReason: dto.changeReason?.trim() || `Cập nhật lên phiên bản ${nextVersion}`,
         },
@@ -366,7 +366,7 @@ export class TestCasesService {
         'Test Suite': tc.suite?.name || 'Chưa phân loại',
         'Độ ưu tiên': tc.priority,
         'Trạng thái': tc.status,
-        'Tags': tc.tags.join(', '),
+        'Tags': Array.isArray(tc.tags) ? (tc.tags as string[]).join(', ') : '',
         'Điều kiện tiên quyết': tc.preconditions || '',
         'Mô tả': tc.description || '',
         'Các bước thực hiện': formattedSteps,
@@ -560,7 +560,7 @@ export class TestCasesService {
               steps,
               priority: tc.priority,
               status: tc.status,
-              tags: tc.tags,
+              tags: (tc.tags as any) ?? [],
               changedById: user.sub,
               changeReason: 'Nhập khẩu từ tệp Excel/CSV',
             },

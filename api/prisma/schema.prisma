@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -94,7 +94,7 @@ model User {
   email        String     @unique
   passwordHash String     @map("password_hash")
   fullName     String     @map("full_name")
-  avatarUrl    String?    @map("avatar_url")
+  avatarUrl    String?    @db.Text @map("avatar_url")
   systemRole   SystemRole @default(USER) @map("system_role")
   isActive     Boolean    @default(true) @map("is_active")
   createdAt    DateTime   @default(now()) @map("created_at")
@@ -136,7 +136,7 @@ model RefreshToken {
 model Project {
   id          String        @id @default(cuid())
   name        String
-  description String?
+  description String?       @db.Text
   status      ProjectStatus @default(ACTIVE)
   testCaseSeq Int           @default(0) @map("test_case_seq")
   bugSeq      Int           @default(0) @map("bug_seq")
@@ -212,7 +212,7 @@ model TestSuite {
   id          String   @id @default(cuid())
   projectId   String   @map("project_id")
   name        String
-  description String?
+  description String?  @db.Text
   parentId    String?  @map("parent_id")
   order       Int      @default(0)
   createdAt   DateTime @default(now()) @map("created_at")
@@ -238,12 +238,12 @@ model TestCase {
   suiteId       String?          @map("suite_id")
   code          String           // Ví dụ: TC-1, TC-2...
   title         String
-  description   String?
-  preconditions String?
+  description   String?          @db.Text
+  preconditions String?          @db.Text
   steps         Json             @default("[]") // [{stepNumber: 1, action: "...", expectedResult: "..."}]
   priority      TestCasePriority @default(MEDIUM)
   status        TestCaseStatus   @default(DRAFT)
-  tags          String[]         @default([])
+  tags          Json             @default("[]")
   order         Int              @default(0)
   version       Int              @default(1)
   createdById   String           @map("created_by_id")
@@ -274,14 +274,14 @@ model TestCaseHistory {
   testCaseId    String           @map("test_case_id")
   version       Int
   title         String
-  description   String?
-  preconditions String?
+  description   String?          @db.Text
+  preconditions String?          @db.Text
   steps         Json             @default("[]")
   priority      TestCasePriority
   status        TestCaseStatus
-  tags          String[]         @default([])
+  tags          Json             @default("[]")
   changedById   String           @map("changed_by_id")
-  changeReason  String?          @map("change_reason")
+  changeReason  String?          @db.Text @map("change_reason")
   createdAt     DateTime         @default(now()) @map("created_at")
 
   testCase  TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
@@ -301,13 +301,13 @@ model TestRun {
   projectId    String        @map("project_id")
   parentRunId  String?       @map("parent_run_id")
   name         String
-  description  String?
+  description  String?       @db.Text
   status       TestRunStatus @default(OPEN)
   createdById  String        @map("created_by_id")
   assignedToId String?       @map("assigned_to_id")
   startedAt    DateTime?     @map("started_at")
   completedAt  DateTime?     @map("completed_at")
-  reworkReason String?       @map("rework_reason")
+  reworkReason String?       @db.Text @map("rework_reason")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
@@ -332,15 +332,15 @@ model TestExecution {
   // Snapshot data of Test Case at time of Run creation (frozen history)
   testCaseCode          String              @map("test_case_code")
   testCaseTitle         String              @map("test_case_title")
-  testCasePreconditions String?             @map("test_case_preconditions")
+  testCasePreconditions String?             @db.Text @map("test_case_preconditions")
   testCaseSteps         Json                @default("[]") @map("test_case_steps")
   testCasePriority      TestCasePriority    @default(MEDIUM) @map("test_case_priority")
   testCaseVersion       Int                 @default(1) @map("test_case_version")
   // Execution result
   status                TestExecutionStatus @default(UNTESTED)
-  actualResult          String?             @map("actual_result")
+  actualResult          String?             @db.Text @map("actual_result")
   stepResults           Json?               @map("step_results")
-  attachments           String[]            @default([])
+  attachments           Json                @default("[]")
   executedById          String?             @map("executed_by_id")
   executedAt            DateTime?           @map("executed_at")
   executionDurationMs   Int?                @map("execution_duration_ms")
@@ -372,7 +372,7 @@ model Bug {
   testCaseId      String?     @map("test_case_id")
   code            String      // e.g. BUG-1, BUG-2
   title           String
-  description     String
+  description     String      @db.Text
   severity        BugSeverity @default(MEDIUM)
   status          BugStatus   @default(OPEN)
   createdById     String      @map("created_by_id")
@@ -409,9 +409,9 @@ model Notification {
   userId    String           @map("user_id")
   projectId String?          @map("project_id")
   title     String
-  message   String
+  message   String           @db.Text
   type      NotificationType @default(SYSTEM)
-  link      String?
+  link      String?          @db.Text
   isRead    Boolean          @default(false) @map("is_read")
   createdAt DateTime         @default(now()) @map("created_at")
 
